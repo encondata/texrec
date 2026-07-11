@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Our Staff — TexRec Scuba</title>
+  <meta name="description" content="Meet the TexRec crew — TDI-SDI and RAID instructors and divemasters serving DFW since 2009.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="staff">
+
+<div class="page-hero" data-bubbles>
+  <div class="wrap">
+    <div class="eyebrow">The Crew</div>
+    <h1 class="rise d1">Our Staff</h1>
+    <p class="rise d2">Small shop, serious credentials. Every TexRec instructor is insured,
+      current, and dives for fun on their days off — which tells you everything.</p>
+  </div>
+</div>
+
+<section class="block">
+  <div class="wrap">
+    <div class="grid c3" id="staff-list"></div>
+  </div>
+</section>
+
+<section class="block alt">
+  <div class="wrap" style="text-align:center">
+    <h2 style="font-size:36px">Want to join the crew?</h2>
+    <p style="color:var(--ink-soft);max-width:520px;margin:12px auto 24px">
+      Our Divemaster program is the path. Interns train alongside staff and get first
+      crack at paid crew spots on trips.</p>
+    <a class="btn btn-red" href="/courses#divemaster">Divemaster Program</a>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+(async () => {
+  const staff = await api('/api/staff');
+  $('#staff-list').innerHTML = staff.map(p => `
+    <div class="card staff-card reveal">
+      <div class="corner"></div>
+      <div class="pad">
+        <div class="avatar">${p.initials}</div>
+        <h3>${p.name}</h3>
+        <div class="role">${p.role}</div>
+        <div class="certs">${p.certs}</div>
+        <p class="blurb">${p.bio}</p>
+        ${p.teaches ? `<div class="teaches">
+          ${p.teaches.split(',').map(t => `<span class="chip outline">${t.trim()}</span>`).join('')}
+        </div>` : ''}
+      </div>
+    </div>`).join('');
+  initReveal();
+})();
+</script>
+<script src="/js/fx.js"></script>
+</body>
+</html>

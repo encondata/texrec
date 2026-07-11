@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Gallery — TexRec Scuba</title>
+  <meta name="description" content="TexRec dive photos from Texas quarries to Caribbean reefs — browse the gallery or explore the dive map.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="gallery">
+
+<div class="page-hero" data-bubbles>
+  <div class="wrap">
+    <div class="eyebrow">Logbook</div>
+    <h1 class="rise d1">Photo Gallery</h1>
+    <p class="rise d2">Where we've been and what we saw — from Texas quarries to Caribbean walls.
+      Every photo is pinned on the dive map below.</p>
+  </div>
+</div>
+
+<section class="block" style="padding-bottom:38px">
+  <div class="wrap">
+    <div class="carousel" id="carousel">
+      <div class="c-track" id="c-track"></div>
+      <button class="c-nav prev" id="c-prev" aria-label="Previous photo">‹</button>
+      <button class="c-nav next" id="c-next" aria-label="Next photo">›</button>
+      <div class="c-dots" id="c-dots"></div>
+    </div>
+  </div>
+</section>
+
+<section class="block alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Dive Map</div>
+      <h2>Every pin is a story</h2>
+      <p class="sub">Hover a pin for a preview; click for the full photo and details.</p>
+    </div>
+    <div id="dive-map"></div>
+  </div>
+</section>
+
+<!-- full photo modal -->
+<div class="modal-back" id="photo-back">
+  <div class="modal photo-modal" role="dialog" aria-modal="true">
+    <button class="close" id="photo-close" aria-label="Close">✕</button>
+    <img id="pm-img" alt="">
+    <div class="pm-body">
+      <h3 id="pm-title"></h3>
+      <div class="pm-meta" id="pm-meta"></div>
+      <p id="pm-desc"></p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/js/shared.js"></script>
+<script src="/js/gallery.js"></script>
+<script src="/js/fx.js"></script>
+</body>
+</html>

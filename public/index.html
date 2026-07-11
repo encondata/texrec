@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TexRec — Scuba Instruction in DFW, Texas</title>
+  <meta name="description" content="TexRec is DFW's TDI-SDI and RAID scuba training facility: small classes, private instruction, courses from Try Scuba to Divemaster, and guided dive trips.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="home">
+
+<div class="hero" data-bubbles>
+  <div class="wrap inner">
+    <span class="kicker rise d1"><span class="flag"></span> DFW · Texas · Est. 2009</span>
+    <h1 class="rise d2">Learn to<br>breathe <br class="mid-br"><span class="stroke">under</span>water</h1>
+    <p class="lede rise d3">TDI-SDI and RAID scuba training, guided trips, and small classes
+      with personalized instruction — we've certified over 5,000 North Texans,
+      never more than six at a time.</p>
+    <div class="actions rise d4">
+      <a class="btn btn-white" href="/calendar">See Class Calendar</a>
+      <a class="btn btn-ghost" style="border-color:#fff;color:#fff" href="/courses">Browse Courses</a>
+    </div>
+  </div>
+</div>
+
+<div class="strip" aria-hidden="true">
+  <div class="scroll" id="ticker"></div>
+</div>
+
+<section class="block">
+  <div class="wrap">
+    <div class="sec-head row reveal">
+      <div>
+        <div class="eyebrow">Get Certified</div>
+        <h2>Courses for every depth</h2>
+        <p class="sub">From your very first breath underwater to leading dives professionally —
+          every course taught by TexRec instructors in our own heated pool and Texas open water.</p>
+      </div>
+      <a class="btn btn-ghost" href="/courses">All Courses</a>
+    </div>
+    <div class="grid c3" id="home-courses"></div>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <div class="callout reveal">
+      <div>
+        <h2>Small classes.<br>Personal instruction.</h2>
+        <p>We cap every class at <strong>six students per instructor</strong> — no cattle-boat
+          certifications. Divers <strong>13 and under always train 1-on-1</strong> with their own
+          Divemaster or Instructor. Want it even more personal? Every course
+          we teach is available as a <strong>private class</strong>: your schedule, your pace,
+          your family or dive buddies only.</p>
+        <div class="pills">
+          <span class="chip">6 students max</span>
+          <span class="chip">13 &amp; under: 1-on-1</span>
+          <span class="chip">Private classes available</span>
+          <span class="chip">Flexible scheduling</span>
+        </div>
+      </div>
+      <a class="btn btn-white" href="/about" style="justify-self:start">Ask About Private</a>
+    </div>
+  </div>
+</section>
+
+<section class="block alt">
+  <div class="wrap">
+    <div class="sec-head row reveal">
+      <div>
+        <div class="eyebrow">Upcoming</div>
+        <h2>Next classes on the books</h2>
+        <p class="sub">Pick a date, grab a seat, and we'll confirm your spot within one business day.</p>
+      </div>
+      <a class="btn btn-red" href="/calendar">Full Calendar</a>
+    </div>
+    <div class="session-list" id="home-sessions"></div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="sec-head" style="margin-bottom:20px">
+        <div class="eyebrow">Dive Travel</div>
+        <h2>Trips worth surfacing for</h2>
+      </div>
+      <p style="color:var(--ink-soft);font-size:18px;margin-bottom:16px">
+        Cozumel drift dives, Bonaire shore diving, and the best-kept secret in Texas —
+        the Flower Garden Banks, 100 miles off Galveston. Every TexRec trip travels with our
+        own staff, so you're never just a name on a manifest.</p>
+      <a class="btn btn-red" href="/trips">See Upcoming Trips</a>
+    </div>
+    <div class="art reveal" aria-hidden="true"><span class="depth">— 60 FT · VIS 100' —</span></div>
+  </div>
+</section>
+
+<section class="block alt">
+  <div class="wrap">
+    <div class="stat-band reveal">
+      <div class="stat"><div class="num" data-count="5000" data-suffix="+">0</div><div class="lbl">Divers Certified</div></div>
+      <div class="stat"><div class="num" data-count="17">0</div><div class="lbl">Years in DFW</div></div>
+      <div class="stat"><div class="num" data-count="6">0</div><div class="lbl">Students Max per Class</div></div>
+      <div class="stat"><div class="num" data-count="12" data-suffix="+">0</div><div class="lbl">Trips per Year</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="dan-band">
+  <div class="wrap">
+    <span>Every diver should carry dive accident coverage — TexRec is a proud DAN referral partner.</span>
+    <a href="https://dan.org/membership-insurance/" target="_blank" rel="noopener" aria-label="Join DAN — Your Dive Safety Association">
+      <img src="/img/dan-banner.jpg" alt="Join DAN today — your dive safety association" width="320" height="50">
+    </a>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+  // ticker
+  const items = ['Small classes · 6 students max', 'Private classes available',
+    'Next Open Water class starts soon', 'Cozumel Reef Week · September',
+    'Nitrox in one evening', 'Flower Garden Banks liveaboard', 'Try Scuba — $99'];
+  const half = items.map(t => `<span><span class="dot">◆</span> ${t}</span>`).join('');
+  $('#ticker').innerHTML = half + half;
+
+  (async () => {
+    const courses = await api('/api/courses');
+    $('#home-courses').innerHTML = courses.slice(0, 3).map(c => `
+      <div class="card reveal">
+        <div class="level-band ${c.level}"></div>
+        <div class="corner"></div>
+        <div class="pad">
+          <h3>${c.name}</h3>
+          <div class="meta"><span class="chip red">${c.level}</span>${c.duration ? `<span class="chip">${c.duration}</span>` : ''}</div>
+          <p class="blurb">${c.blurb}</p>
+          <div class="foot">
+            <span class="price">${priceLabel(c.price_cents)}</span>
+            <a class="btn btn-sm btn-ghost" href="/courses#${c.slug}">Details</a>
+          </div>
+        </div>
+      </div>`).join('');
+
+    const sessions = await api('/api/sessions');
+    $('#home-sessions').innerHTML = sessions.slice(0, 4).map(s => {
+      const left = s.capacity - s.registered;
+      return `
+      <div class="session-row reveal">
+        <div class="session-date">
+          <span class="mon">${fmtDate(s.start_date, { month: 'short' }).toUpperCase()}</span>
+          <span class="day">${new Date(s.start_date + 'T12:00:00').getDate()}</span>
+        </div>
+        <div>
+          <h3>${s.course_name}</h3>
+          <div class="det">${fmtRange(s.start_date, s.end_date)} · ${s.start_time} · ${s.location}</div>
+          <div class="seats">${left > 0 ? `${left} seat${left === 1 ? '' : 's'} left` : 'Full — waitlist open'}</div>
+        </div>
+        <div class="act"><a class="btn btn-sm btn-red" href="/calendar?session=${s.id}">Register</a></div>
+      </div>`;
+    }).join('');
+    initReveal();
+  })();
+</script>
+<script src="/js/fx.js"></script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dive Trips — TexRec Scuba</title>
+  <meta name="description" content="Guided dive travel with TexRec: Cozumel, Bonaire, Flower Garden Banks, and Texas weekend getaways.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="trips">
+
+<div class="page-hero" data-bubbles>
+  <div class="wrap">
+    <div class="eyebrow">Dive Travel</div>
+    <h1 class="rise d1">Trips</h1>
+    <p class="rise d2">Every trip travels with TexRec staff. New divers welcome on anything
+      without a listed requirement — we'll buddy you up.</p>
+  </div>
+</div>
+
+<section class="block">
+  <div class="wrap">
+    <div class="grid c2" id="trip-list"></div>
+    <p style="text-align:center;color:var(--ink-soft);margin-top:40px">
+      Want on a trip? Call <a href="tel:+19725550163">(972) 555-0163</a> or stop by the shop —
+      a deposit holds your spot.</p>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+(async () => {
+  const trips = await api('/api/trips');
+  $('#trip-list').innerHTML = trips.map(t => {
+    const left = t.spots_total - t.spots_taken;
+    const cls = left === 0 ? 'none' : left <= 4 ? 'low' : '';
+    return `
+    <div class="card trip-card reveal">
+      <div class="corner"></div>
+      <div class="pad">
+        <div class="dest">${t.destination}</div>
+        <h3>${t.title}</h3>
+        <div class="dates">${fmtRange(t.start_date.slice(0,10), t.end_date.slice(0,10))}</div>
+        <p class="blurb" style="margin-top:12px">${t.description}</p>
+        <div class="foot">
+          <span class="price">${money(t.price_cents)} <small>/ diver</small></span>
+          <span class="spots ${cls}">${left === 0 ? 'Sold out' : `${left} spots left`}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  initReveal();
+})();
+</script>
+<script src="/js/fx.js"></script>
+</body>
+</html>

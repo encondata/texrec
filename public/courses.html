@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Courses — TexRec Scuba</title>
+  <meta name="description" content="TDI-SDI and RAID scuba courses in DFW: Try Scuba, Open Water, Advanced Adventure, Rescue, Nitrox, and Divemaster — small classes and private instruction.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="courses">
+
+<div class="page-hero" data-bubbles>
+  <div class="wrap">
+    <div class="eyebrow">Training</div>
+    <h1 class="rise d1">Courses</h1>
+    <p class="rise d2">TDI-SDI and RAID certifications taught in-house by TexRec pros — eLearning at
+      your pace, skills in our heated indoor pool, checkout dives in real Texas open water.
+      Every class capped at six students; every course available as a private class.</p>
+  </div>
+</div>
+
+<section class="block">
+  <div class="wrap">
+    <div class="grid c2" id="course-list"></div>
+  </div>
+</section>
+
+<section class="block alt">
+  <div class="wrap" style="text-align:center">
+    <h2 style="font-size:36px">Not sure where to start?</h2>
+    <p style="color:var(--ink-soft);max-width:540px;margin:12px auto 24px">
+      Never dived before? <strong>Try Scuba</strong> is a one-afternoon tryout.
+      Ready to commit? <strong>Open Water</strong> is your certification. Prefer one-on-one?
+      Every course is available as a <strong>private class</strong>. Call us and we'll point you right.</p>
+    <a class="btn btn-red" href="/calendar">Find a Class Date</a>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+(async () => {
+  const courses = await api('/api/courses');
+  $('#course-list').innerHTML = courses.map(c => `
+    <div class="card reveal" id="${c.slug}">
+      <div class="level-band ${c.level}"></div>
+      <div class="corner"></div>
+      <div class="pad">
+        <h3>${c.name}</h3>
+        <div class="meta">
+          <span class="chip red">${c.level}</span>
+          <span class="chip">${c.agency}</span>
+          ${c.duration ? `<span class="chip outline">${c.duration}</span>` : ''}
+        </div>
+        <p class="blurb">${c.description}</p>
+        <p style="margin-top:12px;font-size:14px;color:var(--ink-soft)">
+          <strong>Prerequisites:</strong> ${c.prerequisites || 'None'}</p>
+        ${(c.prereq_course_slug || c.next_courses.length) ? `
+        <div class="pathway">
+          ${c.prereq_course_slug ? `<a href="#${c.prereq_course_slug}">← ${c.prereq_course_name}</a>` : '<span class="start">Start here</span>'}
+          ${c.next_courses.map(n => `<a href="#${n.slug}" class="next">${n.name} →</a>`).join('')}
+        </div>` : ''}
+        <div class="foot">
+          <span class="price">${priceLabel(c.price_cents)}</span>
+          <a class="btn btn-sm btn-red" href="/calendar?course=${c.slug}">See Dates</a>
+        </div>
+      </div>
+    </div>`).join('');
+  initReveal();
+})();
+</script>
+<script src="/js/fx.js"></script>
+</body>
+</html>

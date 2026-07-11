@@ -1,0 +1,7 @@
+node_modules
+media
+public/uploads
+.env
+*.md
+.claude
+DAN-Membership-Referral-Rewards-1-320x50px.jpg

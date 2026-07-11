@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# secrets & local environment (never commit — use .env.example as the template)
+.env
+.env.*
+!.env.example
+
+# editor / IDE / harness config
+.claude/
+.vscode/
+.idea/
+
+# runtime user content — uploads, private class media, customer docs & avatars
+media/
+public/uploads/
+
+# machine-local source assets (third-party originals kept outside the repo)
+DAN-Membership-Referral-Rewards-*.jpg
+
+# OS / logs
+.DS_Store
+*.log
+npm-debug.log*

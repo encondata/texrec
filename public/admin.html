@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Portal — TexRec Scuba</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="admin">
+
+<!-- login view -->
+<div id="login-view" style="display:none">
+  <div class="login-card">
+    <div class="m-head">
+      <h2>TexRec Admin</h2>
+      <div class="sub">Staff sign-in</div>
+    </div>
+    <div class="m-body">
+      <div class="form-msg" id="login-msg"></div>
+      <form id="login-form">
+        <div class="field"><label for="l-email">Email</label>
+          <input id="l-email" name="email" type="email" required autocomplete="username"></div>
+        <div class="field"><label for="l-pass">Password</label>
+          <input id="l-pass" name="password" type="password" required autocomplete="current-password"></div>
+        <button class="btn btn-red" type="submit" style="width:100%">Sign In</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- dashboard view -->
+<div id="dash-view" class="wrap admin-shell" style="display:none">
+  <div class="admin-top">
+    <div>
+      <div class="eyebrow" style="color:var(--red);font-weight:800;font-size:13px;letter-spacing:.3em;text-transform:uppercase">Admin Portal</div>
+      <h1 style="font-size:40px">Dashboard</h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="bell" id="bell" title="Inbox" aria-label="Inbox">
+        🔔<span class="bell-badge" id="bell-badge" style="display:none"></span>
+      </button>
+      <button id="admin-name" class="linkish" title="My profile"></button>
+      <button class="btn btn-sm btn-ghost" id="logout">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="tabs" style="flex-wrap:wrap">
+    <button data-tab="inbox">Inbox <span class="count" id="inbox-count" style="display:none"></span></button>
+    <button data-tab="regs" class="active">Registrations <span class="count" id="pending-count" style="display:none"></span></button>
+    <button data-tab="sessions">Classes</button>
+    <button data-tab="courses">Courses</button>
+    <button data-tab="trips">Trips</button>
+    <button data-tab="customers">Customers</button>
+    <button data-tab="staff">Staff</button>
+    <button data-tab="photos">Photos</button>
+    <button data-tab="sites">Sites</button>
+    <button data-tab="accounts">Accounts</button>
+    <button data-tab="profile">My Profile</button>
+  </div>
+
+  <!-- inbox tab -->
+  <div id="tab-inbox" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;gap:8px" id="inbox-filters">
+        <button class="btn btn-sm btn-red" data-nf="unacked">Needs Attention</button>
+        <button class="btn btn-sm btn-ghost" data-nf="all">All</button>
+      </div>
+      <button class="btn btn-sm btn-ghost" id="ack-all">Acknowledge All</button>
+    </div>
+    <div id="notif-list" class="notif-list"></div>
+  </div>
+
+  <!-- registrations tab -->
+  <div id="tab-regs">
+    <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap" id="reg-filters">
+      <button class="btn btn-sm btn-red" data-f="">All</button>
+      <button class="btn btn-sm btn-ghost" data-f="pending">Pending</button>
+      <button class="btn btn-sm btn-ghost" data-f="confirmed">Confirmed</button>
+      <button class="btn btn-sm btn-ghost" data-f="waitlist">Waitlist</button>
+      <button class="btn btn-sm btn-ghost" data-f="cancelled">Cancelled</button>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th>Student</th><th>Class</th><th>Starts</th><th>Contact</th><th>Notes</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="reg-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- sessions tab -->
+  <div id="tab-sessions" style="display:none">
+    <div class="tab-actions staff-only">
+      <button class="btn-plus" data-addform="session" title="Add a class" aria-label="Add a class">+</button>
+    </div>
+    <div class="form-holder" hidden>
+    <div class="card" id="session-form-card"><div class="pad">
+      <h3 id="session-form-title" style="margin-bottom:14px">Add a class session</h3>
+      <form id="session-form">
+        <input type="hidden" name="id">
+        <div class="field-row">
+          <div class="field"><label>Course</label><select name="course_id" id="s-course" required></select></div>
+          <div class="field"><label>Location</label><input name="location" required value="TexRec Indoor Pool — Carrollton, TX"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Start date</label><input name="start_date" type="date" required></div>
+          <div class="field"><label>End date</label><input name="end_date" type="date"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Start time</label><input name="start_time" type="time" value="09:00"></div>
+          <div class="field"><label>Capacity</label><input name="capacity" type="number" min="1" value="8"></div>
+        </div>
+        <div class="field"><label>Notes</label><input name="notes" placeholder="Optional"></div>
+        <button class="btn btn-sm btn-red" type="submit">Add Session</button>
+        <span id="session-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+    </div></div>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th></th><th>Class</th><th>Dates</th><th>Lead</th><th>Enrolled</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="session-rows"></tbody>
+      </table>
+    </div>
+
+    <!-- selected session detail: roster + files -->
+    <div id="session-detail" style="display:none;margin-top:26px" class="card"><div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h3 id="sd-title"></h3>
+        <button class="btn btn-sm btn-ghost" id="sd-close">Close</button>
+      </div>
+      <h4 style="margin:18px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Roster</h4>
+      <div class="table-scroll"><table class="data"><thead><tr>
+        <th>Student</th><th>Contact</th><th>Cert Level</th><th>Status</th><th></th>
+      </tr></thead><tbody id="sd-roster"></tbody></table></div>
+      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Class Photos &amp; Files
+        <span style="font-weight:400;text-transform:none;letter-spacing:0"> — visible to confirmed students in their account portal</span></h4>
+      <form id="media-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <input name="file" type="file" accept="image/*,.pdf" required style="font-size:14px">
+        <input name="title" placeholder="Title (optional)" style="font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px">
+        <button class="btn btn-sm btn-red" type="submit">Upload</button>
+        <span id="media-msg" style="font-weight:600"></span>
+      </form>
+      <div class="media-grid" id="sd-media"></div>
+    </div></div>
+  </div>
+
+  <!-- courses tab -->
+  <div id="tab-courses" style="display:none">
+    <div class="tab-actions">
+      <button class="btn-plus" data-addform="course" title="Add a course" aria-label="Add a course">+</button>
+    </div>
+    <div class="form-holder" hidden>
+    <div class="card" id="course-form-card"><div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h3 id="course-form-title">Add a course</h3>
+        <label class="super-only" style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;text-transform:uppercase;letter-spacing:.05em">
+          <input type="checkbox" id="course-json-toggle" style="width:15px;height:15px;accent-color:var(--red)">
+          Bulk import (JSON)
+        </label>
+      </div>
+      <form id="course-form">
+        <input type="hidden" name="id">
+        <div class="field-row">
+          <div class="field"><label>Name *</label><input name="name" required></div>
+          <div class="field"><label>Level *</label>
+            <select name="level"><option>Beginner</option><option>Continuing</option><option>Specialty</option><option>Professional</option></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Agency</label><input name="agency" value="SDI" placeholder="SDI, TDI-SDI, RAID…"></div>
+          <div class="field"><label>Duration *</label><input name="duration" required placeholder="e.g. 2 weekends"></div>
+        </div>
+        <div class="field"><label>Short blurb * <span style="font-weight:400;text-transform:none">(cards & calendar)</span></label>
+          <input name="blurb" required></div>
+        <div class="field"><label>Full description *</label><textarea name="description" rows="3" required></textarea></div>
+        <div class="field"><label>Prerequisites (text shown to customers)</label><input name="prerequisites" placeholder="e.g. Open Water Diver, 18+"></div>
+        <div class="field-row">
+          <div class="field"><label>Price (USD) *</label><input name="price" type="number" min="1" step="1" required></div>
+          <div class="field"><label>Comes after <span style="font-weight:400;text-transform:none">(progression order)</span></label>
+            <select name="prereq_course_id" id="c-prereq"><option value="">— Start of progression —</option></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Sort (tiebreak within step)</label><input name="sort" type="number" value="99"></div>
+          <div class="field"><label>Visible on site</label>
+            <select name="active"><option value="true">Yes — listed publicly</option><option value="false">No — hidden</option></select></div>
+        </div>
+        <button class="btn btn-sm btn-red" type="submit" id="course-submit">Add Course</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="course-cancel" style="display:none;margin-left:8px">Cancel Edit</button>
+        <span id="course-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+      <div id="course-json-box" hidden>
+        <div class="field"><label>Paste one course object or an array of them</label>
+        <textarea id="course-json" rows="14" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:13px"
+placeholder='[
+  {
+    "name": "Open Water Diver",
+    "level": "Beginner",
+    "agency": "SDI · RAID",
+    "blurb": "The certification that starts it all.",
+    "description": "Full course description shown on the Courses page.",
+    "prerequisites": "None. Ages 10+.",
+    "duration": "3 weekends",
+    "price": 449,
+    "comes_after": "Try Scuba",
+    "sort": 99
+  }
+]'></textarea></div>
+        <p style="font-size:13px;color:var(--ink-soft);margin:-6px 0 12px">
+          Keys: name*, level* (Beginner/Continuing/Specialty/Professional), agency, blurb*, description*,
+          prerequisites, duration*, price* (dollars) or price_cents, comes_after (existing or earlier-in-list course name),
+          sort (99 = auto), active. Entries import in order, so a course can reference one above it.</p>
+        <button class="btn btn-sm btn-red" type="button" id="course-json-import">Import</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="course-json-sample" style="margin-left:8px">Insert Sample</button>
+        <span id="course-json-msg" style="margin-left:12px;font-weight:600"></span>
+      </div>
+    </div></div>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th></th><th>Course</th><th>Level</th><th>Price</th><th>Visible</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="course-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- trips tab -->
+  <div id="tab-trips" style="display:none">
+    <div class="tab-actions">
+      <button class="btn-plus" data-addform="trip" title="Add a trip" aria-label="Add a trip">+</button>
+    </div>
+    <div class="form-holder" hidden>
+    <div class="card" id="trip-form-card"><div class="pad">
+      <h3 id="trip-form-title" style="margin-bottom:14px">Add a trip</h3>
+      <form id="trip-form">
+        <input type="hidden" name="id">
+        <div class="field-row">
+          <div class="field"><label>Title *</label><input name="title" required></div>
+          <div class="field"><label>Destination *</label><input name="destination" required placeholder="e.g. Cozumel, Mexico"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Start date *</label><input name="start_date" type="date" required></div>
+          <div class="field"><label>End date *</label><input name="end_date" type="date" required></div>
+        </div>
+        <div class="field"><label>Description *</label><textarea name="description" rows="3" required></textarea></div>
+        <div class="field-row">
+          <div class="field"><label>Price per diver (USD) *</label><input name="price" type="number" min="1" step="1" required></div>
+          <div class="field"><label>Spots (total / taken)</label>
+            <div style="display:flex;gap:8px">
+              <input name="spots_total" type="number" min="1" value="12" style="flex:1">
+              <input name="spots_taken" type="number" min="0" value="0" style="flex:1">
+            </div></div>
+        </div>
+        <div class="field"><label>Visible on site</label>
+          <select name="active"><option value="true">Yes — listed on Trips page</option><option value="false">No — hidden</option></select></div>
+        <button class="btn btn-sm btn-red" type="submit" id="trip-submit">Add Trip</button>
+        <span id="trip-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+    </div></div>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th></th><th>Trip</th><th>Dates</th><th>Price</th><th>Spots</th><th>Visible</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="trip-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- customers tab -->
+  <div id="tab-customers" style="display:none">
+    <div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+      <input id="cust-search" placeholder="Search name or email…"
+        style="font-family:var(--font-body);font-size:15px;padding:10px 14px;border:1.5px solid var(--line);border-radius:7px;min-width:260px;background:#fff">
+      <button class="btn btn-sm btn-ghost" id="cust-search-btn">Search</button>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th>Customer</th><th>Contact</th><th>Registrations</th><th>Certs</th><th>Portal</th><th></th>
+        </tr></thead>
+        <tbody id="cust-rows"></tbody>
+      </table>
+    </div>
+
+    <!-- customer detail -->
+    <div id="cust-detail" style="display:none;margin-top:26px" class="card"><div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:16px">
+          <div id="cd-avatar"></div>
+          <div>
+            <h3 id="cd-title"></h3>
+            <div id="cd-contact" style="color:var(--ink-soft);font-size:14.5px;margin-top:4px"></div>
+            <label class="btn btn-sm btn-ghost" style="margin-top:8px;display:inline-block;cursor:pointer">
+              Change Avatar<input type="file" id="cd-avatar-input" accept="image/*" style="display:none">
+            </label>
+            <span id="cd-avatar-msg" style="font-weight:600;font-size:13px;margin-left:8px"></span>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13.5px;color:var(--ink-soft);cursor:pointer">
+              <input type="checkbox" id="cd-share" style="width:15px;height:15px;accent-color:var(--red)">
+              Shares contact info with classmates
+              <span id="cd-share-msg" style="font-weight:600;font-size:12.5px"></span>
+            </label>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-ghost" id="cd-delete" style="display:none">Delete Customer</button>
+          <button class="btn btn-sm btn-ghost" id="cd-close">Close</button>
+        </div>
+      </div>
+      <h4 style="margin:18px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Class History</h4>
+      <div class="table-scroll"><table class="data"><thead><tr>
+        <th>Class</th><th>Dates</th><th>Status</th>
+      </tr></thead><tbody id="cd-regs"></tbody></table></div>
+      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Documents
+        <span style="font-weight:400;text-transform:none;letter-spacing:0"> — cert cards, medical forms, waivers (visible to the customer)</span></h4>
+      <form id="doc-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <input name="file" type="file" accept="image/*,.pdf" required style="font-size:14px">
+        <input name="title" placeholder="Title (optional)" style="font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px">
+        <select name="category" style="font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff">
+          <option value="cert_card">Certification Card</option>
+          <option value="medical">Medical Form</option>
+          <option value="waiver">Waiver</option>
+          <option value="other" selected>Other</option>
+        </select>
+        <button class="btn btn-sm btn-red" type="submit">Upload</button>
+        <span id="doc-msg" style="font-weight:600"></span>
+      </form>
+      <div class="media-grid" id="cd-docs" style="margin-bottom:8px"></div>
+
+      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Notes &amp; Certifications</h4>
+      <div id="cd-notes" class="notif-list" style="margin-bottom:18px"></div>
+      <form id="note-form" class="card" style="box-shadow:none"><div class="pad" style="padding:18px">
+        <div class="field-row">
+          <div class="field"><label>Type</label>
+            <select name="kind" id="note-kind"><option value="note">Note</option><option value="certification">Certification</option></select></div>
+          <div class="field"><label>Related class</label><select name="session_id" id="note-session"><option value="">— None —</option></select></div>
+        </div>
+        <div class="field"><label>Details *</label><textarea name="body" rows="2" required></textarea></div>
+        <div class="field-row" id="cert-fields" style="display:none">
+          <div class="field"><label>Agency / Cert #</label>
+            <div style="display:flex;gap:8px">
+              <input name="cert_agency" placeholder="SDI" style="flex:1">
+              <input name="cert_number" placeholder="Cert number" style="flex:1.4">
+            </div></div>
+          <div class="field"><label>Cert date</label><input name="cert_date" type="date"></div>
+        </div>
+        <div class="field"><label>Visible to customer?</label>
+          <select name="visible_to_customer"><option value="true">Yes — shows in their portal</option><option value="false">No — internal only</option></select></div>
+        <button class="btn btn-sm btn-red" type="submit">Add to Record</button>
+        <span id="note-msg" style="margin-left:12px;font-weight:600"></span>
+      </div></form>
+    </div></div>
+  </div>
+
+  <!-- staff tab -->
+  <div id="tab-staff" style="display:none">
+    <div class="tab-actions">
+      <button class="btn-plus" data-addform="staff" title="Add a staff member" aria-label="Add a staff member">+</button>
+    </div>
+    <div class="form-holder" hidden>
+    <div class="card" id="staff-form-card"><div class="pad">
+      <h3 id="staff-form-title" style="margin-bottom:14px">Add a staff member</h3>
+      <form id="staff-form">
+        <input type="hidden" name="id">
+        <div class="field-row">
+          <div class="field"><label>Name *</label><input name="name" required></div>
+          <div class="field"><label>Role / Title *</label><input name="role" required placeholder="e.g. Instructor"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Certifications</label><input name="certs" placeholder="e.g. SDI Instructor, TDI Nitrox Instructor"></div>
+          <div class="field"><label>Avatar initials</label><input name="initials" maxlength="3" placeholder="Auto from name if blank"></div>
+        </div>
+        <div class="field"><label>Classes they teach</label>
+          <input name="teaches" placeholder="Comma-separated, e.g. Open Water, Rescue Diver, Private Classes"></div>
+        <div class="field"><label>Bio / info blurb *</label>
+          <textarea name="bio" rows="3" required></textarea></div>
+        <div class="field-row">
+          <div class="field"><label>Sort order</label><input name="sort" type="number" value="99"></div>
+          <div class="field"><label>Visible on site</label>
+            <select name="active"><option value="true">Yes — shown on Staff page</option><option value="false">No — hidden</option></select></div>
+        </div>
+        <button class="btn btn-sm btn-red" type="submit" id="staff-submit">Add Staff Member</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="staff-cancel" style="display:none;margin-left:8px">Cancel Edit</button>
+        <span id="staff-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+    </div></div>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th></th><th>Name</th><th>Role</th><th>Visible</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="staff-rows"></tbody>
+      </table>
+    </div>
+
+    <!-- staff work history -->
+    <div id="staff-history" style="display:none;margin-top:26px" class="card"><div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h3 id="sh-title"></h3>
+        <button class="btn btn-sm btn-ghost" id="sh-close">Close</button>
+      </div>
+      <h4 style="margin:18px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Classes Worked</h4>
+      <div class="table-scroll"><table class="data"><thead><tr>
+        <th>Class</th><th>Dates</th><th>Role</th><th>Students</th><th>Status</th>
+      </tr></thead><tbody id="sh-sessions"></tbody></table></div>
+      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Students Taught</h4>
+      <div class="table-scroll"><table class="data"><thead><tr>
+        <th>Student</th><th>Class</th><th>Date</th><th>Status</th>
+      </tr></thead><tbody id="sh-students"></tbody></table></div>
+    </div></div>
+  </div>
+
+  <!-- photos tab -->
+  <div id="tab-photos" style="display:none">
+    <div class="card" style="margin-bottom:26px"><div class="pad">
+      <h3 id="photo-form-title" style="margin-bottom:14px">Upload a photo</h3>
+      <form id="photo-form">
+        <input type="hidden" name="id">
+        <div class="field" id="photo-file-field"><label>Image file * <span style="font-weight:400;text-transform:none">(jpeg/png/webp/heic, GPS is read from EXIF automatically)</span></label>
+          <input name="photo" type="file" accept="image/*" required></div>
+        <div class="form-msg" id="gps-status" style="margin-bottom:16px"></div>
+        <div class="field-row">
+          <div class="field"><label>Title *</label><input name="title" required></div>
+          <div class="field"><label>Location name</label><input name="location_name" placeholder="e.g. Cozumel, Mexico"></div>
+        </div>
+        <div class="field"><label>Description / blurb</label>
+          <textarea name="description" rows="2" placeholder="What's happening in this shot?"></textarea></div>
+        <div class="field"><label>GPS coordinates <span style="font-weight:400;text-transform:none">(one line: lat, lng — filled from EXIF, or paste from Google Maps)</span></label>
+          <input name="gps" placeholder="e.g. 32.7357, -96.2153"></div>
+        <div class="field-row">
+          <div class="field"><label>Date taken</label><input name="taken_at" type="date"></div>
+          <div class="field"><label>Visible on site</label>
+            <select name="active"><option value="true">Yes — shown in gallery</option><option value="false">No — hidden</option></select></div>
+        </div>
+        <button class="btn btn-sm btn-red" type="submit" id="photo-submit">Upload Photo</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="photo-cancel" style="display:none;margin-left:8px">Cancel Edit</button>
+        <span id="photo-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+    </div></div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th></th><th>Title</th><th>Location</th><th>Coordinates</th><th>Visible</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="photo-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- sites tab -->
+  <div id="tab-sites" style="display:none">
+    <div class="tab-actions">
+      <button class="btn-plus" data-addform="site" title="Add a training site" aria-label="Add a training site">+</button>
+    </div>
+    <div class="form-holder" hidden>
+    <div class="card" id="site-form-card"><div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h3 id="site-form-title">Add a training site</h3>
+        <label class="super-only" style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;text-transform:uppercase;letter-spacing:.05em">
+          <input type="checkbox" id="site-json-toggle" style="width:15px;height:15px;accent-color:var(--red)">
+          Bulk import (JSON)
+        </label>
+      </div>
+      <form id="site-form">
+        <input type="hidden" name="id">
+        <div class="field-row">
+          <div class="field"><label>Name *</label><input name="name" required></div>
+          <div class="field"><label>Location *</label><input name="location" required placeholder="e.g. Terrell, TX"></div>
+        </div>
+        <div class="field"><label>Blurb *</label><textarea name="blurb" rows="2" required></textarea></div>
+        <div class="field-row">
+          <div class="field"><label>Website</label><input name="website" type="url" placeholder="https://…"></div>
+          <div class="field"><label>Services on site</label><input name="services" placeholder="Comma-separated: Air Fills, Gear Rental, …"></div>
+        </div>
+        <div class="field"><label>GPS coordinates <span style="font-weight:400;text-transform:none">(one line: lat, lng — shows the site on the map)</span></label>
+          <input name="gps" placeholder="e.g. 32.7357, -96.2153"></div>
+        <div class="field-row">
+          <div class="field"><label>Sort order</label><input name="sort" type="number" value="99"></div>
+          <div class="field"><label>Visible on site</label>
+            <select name="active"><option value="true">Yes — shown on Sites page</option><option value="false">No — hidden</option></select></div>
+        </div>
+        <button class="btn btn-sm btn-red" type="submit" id="site-submit">Add Site</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="site-cancel" style="display:none;margin-left:8px">Cancel Edit</button>
+        <span id="site-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+      <div id="site-json-box" hidden>
+        <div class="field"><label>Paste one site object or an array of them</label>
+        <textarea id="site-json" rows="12" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:13px"
+placeholder='[
+  {
+    "name": "Clear Springs Scuba Park",
+    "location": "Terrell, TX",
+    "blurb": "Spring-fed quarry with training platforms.",
+    "website": "https://www.csscuba.com",
+    "services": "Air Fills, Gear Rental, Camping",
+    "gps": "32.7357, -96.2153",
+    "sort": 99
+  }
+]'></textarea></div>
+        <p style="font-size:13px;color:var(--ink-soft);margin:-6px 0 12px">
+          Keys: name*, location*, blurb*, website, services, gps ("lat, lng") or lat/lng, sort (99 = auto), active.</p>
+        <button class="btn btn-sm btn-red" type="button" id="site-json-import">Import</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="site-json-sample" style="margin-left:8px">Insert Sample</button>
+        <span id="site-json-msg" style="margin-left:12px;font-weight:600"></span>
+      </div>
+    </div></div>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th></th><th>Site</th><th>Location</th><th>Visible</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="site-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- accounts tab -->
+  <div id="tab-accounts" style="display:none">
+    <div class="card" style="margin-bottom:26px"><div class="pad">
+      <h3 style="margin-bottom:14px">Add an admin account</h3>
+      <form id="account-form">
+        <div class="field-row">
+          <div class="field"><label>Name *</label><input name="name" required></div>
+          <div class="field"><label>Email *</label><input name="email" type="email" required></div>
+        </div>
+        <div class="field"><label>Password * <span style="font-weight:400;text-transform:none">(min 8 characters)</span></label>
+          <input name="password" type="password" required minlength="8" autocomplete="new-password"></div>
+        <div class="field-row">
+          <div class="field"><label>Role</label>
+            <select name="role" id="acct-role">
+              <option value="staff">Staff — registrations, classes, customers</option>
+              <option value="instructor">Instructor — inbox + own classes/students only</option>
+              <option value="admin">Admin — everything except bulk imports</option>
+              <option value="superadmin" class="super-only">Super Admin — everything + bulk imports</option>
+            </select></div>
+          <div class="field"><label>Linked staff member <span style="font-weight:400;text-transform:none">(required for instructors)</span></label>
+            <select name="staff_id" id="acct-staff"><option value="">— None —</option></select></div>
+        </div>
+        <button class="btn btn-sm btn-red" type="submit">Create Account</button>
+        <span id="account-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+    </div></div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th>Name</th><th>Email</th><th>Role</th><th>Last Sign-In</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="account-rows"></tbody>
+      </table>
+    </div>
+    <p style="font-size:13.5px;color:var(--ink-soft);margin-top:14px">
+      Resetting a password signs that person out everywhere. You can't delete your own account or the last remaining one.</p>
+  </div>
+
+  <!-- profile tab -->
+  <div id="tab-profile" style="display:none">
+    <div class="grid c2">
+      <div class="card"><div class="pad">
+        <h3 style="margin-bottom:14px">My details</h3>
+        <form id="profile-form">
+          <div class="field"><label>Name</label><input name="name" required></div>
+          <div class="field"><label>Email</label><input name="email" type="email" required></div>
+          <button class="btn btn-sm btn-red" type="submit">Save Details</button>
+          <span id="profile-msg" style="margin-left:12px;font-weight:600"></span>
+        </form>
+      </div></div>
+      <div class="card"><div class="pad">
+        <h3 style="margin-bottom:14px">Change password</h3>
+        <form id="password-form">
+          <div class="field"><label>Current password</label>
+            <input name="current_password" type="password" required autocomplete="current-password"></div>
+          <div class="field"><label>New password <span style="font-weight:400;text-transform:none">(min 8 characters)</span></label>
+            <input name="new_password" type="password" required minlength="8" autocomplete="new-password"></div>
+          <div class="field"><label>Confirm new password</label>
+            <input name="confirm_password" type="password" required autocomplete="new-password"></div>
+          <button class="btn btn-sm btn-red" type="submit">Update Password</button>
+          <span id="password-msg" style="margin-left:12px;font-weight:600"></span>
+        </form>
+        <p style="font-size:13.5px;color:var(--ink-soft);margin-top:14px">
+          Changing your password signs you out on every other device.</p>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- generic add/edit modal: form cards are moved in here when opened -->
+<div class="modal-back" id="adm-modal-back">
+  <div class="modal" style="max-width:680px;position:relative;overflow:visible">
+    <button class="close" id="adm-modal-close" aria-label="Close"
+      style="position:absolute;top:-14px;right:-14px;background:var(--ink);z-index:2">✕</button>
+    <div id="adm-modal-body" style="max-height:82vh;overflow-y:auto;border-radius:14px"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/exifr@7.1.3/dist/lite.umd.js"></script>
+<script src="/js/shared.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

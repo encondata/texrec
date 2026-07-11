@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Sites — TexRec Scuba</title>
+  <meta name="description" content="Where TexRec trains: our Carrollton indoor pool plus the Texas open-water sites we use for checkout dives — services, amenities, and links.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="sites">
+
+<div class="page-hero" data-bubbles>
+  <div class="wrap">
+    <div class="eyebrow">Where We Train</div>
+    <h1 class="rise d1">Training Sites</h1>
+    <p class="rise d2">From our heated indoor pool to spring-fed Texas quarries —
+      every site we train at, what's available on site, and how to find them.</p>
+  </div>
+</div>
+
+<section class="block" style="padding-bottom:38px">
+  <div class="wrap">
+    <div id="sites-map"></div>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <div class="grid c2" id="site-list"></div>
+    <p style="text-align:center;color:var(--ink-soft);margin-top:40px">
+      Entry fees at open-water parks are separate from course tuition — check each park's
+      site for current rates. Class meets on site unless your instructor says otherwise.</p>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+(async () => {
+  const sites = await api('/api/sites');
+  $('#site-list').innerHTML = sites.map(s => `
+    <div class="card reveal" id="site-${s.id}">
+      <div class="corner"></div>
+      <div class="pad">
+        <div class="dest" style="color:var(--red);font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:.1em">${esc(s.location)}</div>
+        <h3>${esc(s.name)}</h3>
+        <p class="blurb" style="margin-top:10px">${esc(s.blurb)}</p>
+        ${s.services?.length ? `
+        <div style="margin-top:14px">
+          <div style="font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px">On Site</div>
+          <div class="meta" style="margin:0">
+            ${s.services.map(x => `<span class="chip">${esc(x)}</span>`).join('')}
+          </div>
+        </div>` : ''}
+        ${s.website ? `
+        <div class="foot">
+          <a class="btn btn-sm btn-ghost" href="${esc(s.website)}" target="_blank" rel="noopener">Visit Website ↗</a>
+        </div>` : ''}
+      </div>
+    </div>`).join('');
+  initReveal();
+
+  // map of training sites — dive-flag pins; click a pin to jump to its card.
+  // wrapped so a map hiccup can never take down the rest of the page
+  try {
+  const withGps = sites.filter(s => hasCoords(s.lat, s.lng));
+  if (!withGps.length) { $('#sites-map').style.display = 'none'; return; }
+  const map = L.map('sites-map', { scrollWheelZoom: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 18,
+  }).addTo(map);
+  const markers = withGps.map(s => {
+    const m = L.marker([s.lat, s.lng], {
+      icon: L.divIcon({ className: 'site-pin', html: '<span></span>', iconSize: [34, 34], iconAnchor: [17, 17] }),
+    }).addTo(map);
+    m.bindTooltip(`<div class="pin-preview"><div class="pp-body">
+        <strong>${esc(s.name)}</strong><span>${esc(s.location)}</span>
+      </div></div>`, { direction: 'top', offset: [0, -20], opacity: 1 });
+    m.on('click', () => {
+      document.getElementById(`site-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return m;
+  });
+  const bounds = L.featureGroup(markers).getBounds().pad(0.3);
+  map.fitBounds(bounds, { maxZoom: 9 });
+  // Leaflet never re-measures its container — refit whenever the layout resizes
+  new ResizeObserver(() => {
+    map.invalidateSize();
+    map.fitBounds(bounds, { maxZoom: 9 });
+  }).observe($('#sites-map'));
+  } catch (err) {
+    console.error('sites map failed:', err);
+    $('#sites-map').style.display = 'none';
+  }
+})();
+</script>
+<script src="/js/fx.js"></script>
+</body>
+</html>
