@@ -20,6 +20,17 @@ npm start        # http://localhost:3000 (uses local Postgres, db "texrec")
 (`npm run seed` restores DEMO data and drops all tables — do not run against real data.)
 
 ## Deploy with Docker
+
+### One-shot installer (easiest)
+On any host with Docker + git, run:
+```bash
+curl -fsSL https://raw.githubusercontent.com/encondata/texrec/main/install.sh | bash
+```
+It clones the repo, prompts for each setting (blank passwords auto-generate a
+strong value), writes `.env`, then builds and starts the stack — and prints the
+URL and admin login when it's done.
+
+### Manual
 Everything ships as one folder: app container + Postgres container + named
 volumes (`pgdata`, `media`, `uploads`) so data survives updates.
 
