@@ -67,6 +67,25 @@ Before real production traffic: set `CORS_ORIGIN` in `.env` to the real
 domain(s) instead of `*`, and put TLS in front (Caddy/nginx/Traefik on the same
 host, or `HOST_PORT` behind an existing reverse proxy).
 
+### Serving on a dedicated host IP
+To reach the app on its own address (e.g. `10.10.48.7`) instead of the host's
+main IP, assign that IP to the host and set `BIND_IP` so the container publishes
+only on it. On the Docker host:
+
+```bash
+# 1) add the IP to the NIC (replace eth0 with your interface; /24 = your subnet)
+sudo ip addr add 10.10.48.7/24 dev eth0
+#    make it persistent (Ubuntu/netplan example: add it under the interface's
+#    "addresses:" list in /etc/netplan/*.yaml, then: sudo netplan apply)
+
+# 2) in the app's .env:
+#      BIND_IP=10.10.48.7
+#      HOST_PORT=80
+docker compose up -d
+```
+Now the site answers at `http://10.10.48.7`. The IP must exist on the host
+before `up` — Docker can only bind a port to an address the host already owns.
+
 ## Pages
 | URL | Purpose |
 |---|---|

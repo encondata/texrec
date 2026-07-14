@@ -81,6 +81,7 @@ if [ "$SKIP_ENV" = "0" ]; then
   ask        PGUSER                "  Database user"                    "texrec"
   ask_secret PGPASSWORD            "  Database password"
   ask        HOST_PORT             "  Port to serve the site on"       "80"
+  ask        BIND_IP               "  Bind to host IP (0.0.0.0 = all; or a dedicated IP like 10.10.48.7)" "0.0.0.0"
   ask        CORS_ORIGIN           "  Allowed origin(s) (* = any; use https://yourdomain.com in prod)" "*"
   ask        ADMIN_TOKEN_HOURS     "  Staff session lifetime (hours)"  "12"
   ask        CUSTOMER_TOKEN_DAYS   "  Customer session lifetime (days)" "7"
@@ -95,6 +96,7 @@ PGDATABASE=$PGDATABASE
 PGUSER=$PGUSER
 PGPASSWORD=$PGPASSWORD
 HOST_PORT=$HOST_PORT
+BIND_IP=$BIND_IP
 CORS_ORIGIN=$CORS_ORIGIN
 ADMIN_TOKEN_HOURS=$ADMIN_TOKEN_HOURS
 CUSTOMER_TOKEN_DAYS=$CUSTOMER_TOKEN_DAYS
@@ -110,6 +112,10 @@ else
 fi
 
 PORT="${HOST_PORT:-80}"
+# where to reach the app for the health check + printed URL: if bound to a
+# specific IP, localhost won't answer — use that IP instead.
+CHECK_HOST="${BIND_IP:-0.0.0.0}"
+[ "$CHECK_HOST" = "0.0.0.0" ] && CHECK_HOST="localhost"
 
 # ---- build & launch ------------------------------------------------------
 say ""
@@ -119,22 +125,22 @@ $DC up -d --build
 say "Waiting for the site to come up…"
 up=0
 for _ in $(seq 1 45); do
-  if curl -fsS "http://localhost:${PORT}/api/courses" >/dev/null 2>&1; then up=1; break; fi
+  if curl -fsS "http://${CHECK_HOST}:${PORT}/api/courses" >/dev/null 2>&1; then up=1; break; fi
   sleep 2
 done
 
 echo
 if [ "$up" = "1" ]; then
   ok "TexRec is running."
-  say  "  Site:         http://localhost:${PORT}"
-  say  "  Admin portal: http://localhost:${PORT}/admin"
+  say  "  Site:         http://${CHECK_HOST}:${PORT}"
+  say  "  Admin portal: http://${CHECK_HOST}:${PORT}/admin"
   say  "  Admin email:  ${BOOTSTRAP_ADMIN_EMAIL:-admin@texrec.com}"
   say  "  Admin password: the one you entered — or, if you left it blank, run:"
   printf '                  grep BOOTSTRAP_ADMIN_PASSWORD %s/.env\n' "$(pwd)"
   warn "Change the admin password after your first login."
   warn "If you set a non-standard port, open it in the server firewall (e.g. sudo ufw allow ${PORT}/tcp)."
 else
-  warn "Containers started, but the site didn't answer on port ${PORT} yet."
+  warn "Containers started, but the site didn't answer at ${CHECK_HOST}:${PORT} yet."
   warn "Check logs with:  $DC logs -f app"
 fi
 echo
