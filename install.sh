@@ -128,7 +128,11 @@ if [ "$up" = "1" ]; then
   ok "TexRec is running."
   say  "  Site:         http://localhost:${PORT}"
   say  "  Admin portal: http://localhost:${PORT}/admin"
-  say  "  Sign in with the first-admin email you set (change the password after first login)."
+  say  "  Admin email:  ${BOOTSTRAP_ADMIN_EMAIL:-admin@texrec.com}"
+  say  "  Admin password: the one you entered — or, if you left it blank, run:"
+  printf '                  grep BOOTSTRAP_ADMIN_PASSWORD %s/.env\n' "$(pwd)"
+  warn "Change the admin password after your first login."
+  warn "If you set a non-standard port, open it in the server firewall (e.g. sudo ufw allow ${PORT}/tcp)."
 else
   warn "Containers started, but the site didn't answer on port ${PORT} yet."
   warn "Check logs with:  $DC logs -f app"
