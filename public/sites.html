@@ -51,6 +51,7 @@
       <div class="pad">
         <div class="dest" style="color:var(--red);font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:.1em">${esc(s.location)}</div>
         <h3>${esc(s.name)}</h3>
+        ${s.difficulty ? `<span class="diff-badge ${s.difficulty}" style="margin-top:8px;display:inline-block">${s.difficulty}</span>` : ''}
         <p class="blurb" style="margin-top:10px">${esc(s.blurb)}</p>
         ${s.services?.length ? `
         <div style="margin-top:14px">

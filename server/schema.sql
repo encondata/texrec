@@ -147,6 +147,8 @@ CREATE TABLE dive_sites (
   blurb    TEXT NOT NULL,
   website  TEXT,
   services TEXT[] NOT NULL DEFAULT '{}',   -- e.g. {Air Fills,Gear Rental}
+  difficulty TEXT CONSTRAINT dive_sites_difficulty_chk
+             CHECK (difficulty IN ('beginner','advanced','technical')),
   lat      DOUBLE PRECISION,
   lng      DOUBLE PRECISION,
   sort     INTEGER NOT NULL DEFAULT 0,

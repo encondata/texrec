@@ -825,6 +825,7 @@ async function loadSites() {
       <div><span class="xl">Services On Site</span>${s.services?.length
         ? `<div class="meta" style="margin:4px 0 0">${s.services.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</div>` : '—'}</div>
       <div style="display:flex;gap:26px;flex-wrap:wrap">
+        <span><span class="xl">Difficulty</span>${s.difficulty ? `<span class="diff-badge ${s.difficulty}">${s.difficulty}</span>` : '—'}</span>
         <span><span class="xl">Website</span>${s.website ? `<a href="${esc(s.website)}" target="_blank" rel="noopener">${esc(s.website)} ↗</a>` : '—'}</span>
         <span><span class="xl">Coordinates</span>${hasCoords(s.lat, s.lng) ? `${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}` : '—'}</span>
         <span><span class="xl">Sort</span>${s.sort}</span>
@@ -845,6 +846,7 @@ async function loadSites() {
     const f = $('#site-form').elements;
     for (const k of ['name', 'location', 'blurb', 'website', 'sort']) f[k].value = s[k] ?? '';
     f.services.value = (s.services || []).join(', ');
+    f.difficulty.value = s.difficulty || '';
     f.gps.value = hasCoords(s.lat, s.lng) ? `${s.lat}, ${s.lng}` : '';
     f.id.value = s.id;
     f.active.value = String(s.active);
@@ -888,6 +890,7 @@ const SITE_JSON_SAMPLE = [
     blurb: 'Spring-fed quarry with training platforms and 20+ ft vis.',
     website: 'https://www.csscuba.com',
     services: ['Air Fills', 'Gear Rental', 'Camping'],
+    difficulty: 'beginner',
     gps: '32.7357, -96.2153',
     sort: 99,
     active: true,
@@ -898,6 +901,7 @@ const SITE_JSON_SAMPLE = [
     blurb: 'Add as many entries to this array as you need.',
     website: '',
     services: ['Air Fills'],
+    difficulty: 'advanced',
     gps: '32.2124, -95.8330',
     sort: 99,
     active: true,
@@ -971,7 +975,7 @@ $('#site-form').addEventListener('submit', async e => {
   }
   const body = {
     name: f.name.value, location: f.location.value, blurb: f.blurb.value,
-    website: f.website.value, services: f.services.value,
+    website: f.website.value, services: f.services.value, difficulty: f.difficulty.value,
     lat: gps ? gps.lat : '', lng: gps ? gps.lng : '',
     sort: +f.sort.value || 0, active: f.active.value === 'true',
   };

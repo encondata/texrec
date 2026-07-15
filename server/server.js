@@ -283,7 +283,7 @@ app.post('/api/registrations', wrap(async (req, res) => {
 
 app.get('/api/sites', wrap(async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT id,name,location,blurb,website,services,lat,lng FROM dive_sites WHERE active ORDER BY sort, id');
+    'SELECT id,name,location,blurb,website,services,difficulty,lat,lng FROM dive_sites WHERE active ORDER BY sort, id');
   res.json(rows);
 }));
 
@@ -612,16 +612,24 @@ function normalizeServices(input) {
   return [];
 }
 
+const DIFFICULTIES = ['beginner', 'advanced', 'technical'];
+function normalizeDifficulty(v) {
+  if (v == null || String(v).trim() === '') return null;
+  const d = String(v).trim().toLowerCase();
+  if (!DIFFICULTIES.includes(d)) throw new Error('difficulty must be beginner, advanced, or technical.');
+  return d;
+}
+
 async function insertSite(entry) {
-  const { name, location, blurb, website, services, lat, lng, sort, active } = entry || {};
+  const { name, location, blurb, website, services, difficulty, lat, lng, sort, active } = entry || {};
   if (!name?.trim() || !location?.trim() || !blurb?.trim()) {
     throw new Error('name, location, and blurb are required.');
   }
   const { rows: [s] } = await pool.query(
-    `INSERT INTO dive_sites (name,location,blurb,website,services,lat,lng,sort,active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    `INSERT INTO dive_sites (name,location,blurb,website,services,difficulty,lat,lng,sort,active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [name.trim(), location.trim(), blurb.trim(), website?.trim() || null,
-     normalizeServices(services), lat || null, lng || null,
+     normalizeServices(services), normalizeDifficulty(difficulty), lat || null, lng || null,
      await resolveSort('dive_sites', sort), active ?? true]);
   return s;
 }
@@ -646,13 +654,16 @@ app.post('/api/admin/sites/bulk', requireAdmin, allow('superadmin'), wrap(async 
 }));
 
 app.patch('/api/admin/sites/:id', requireAdmin, allow('admin'), wrap(async (req, res) => {
-  const allowed = ['name', 'location', 'blurb', 'website', 'services', 'lat', 'lng', 'sort', 'active'];
+  const allowed = ['name', 'location', 'blurb', 'website', 'services', 'difficulty', 'lat', 'lng', 'sort', 'active'];
   const sets = [], vals = [];
-  for (const k of allowed) if (k in (req.body || {})) {
-    vals.push(k === 'services' ? normalizeServices(req.body[k])
-      : req.body[k] === '' ? null : req.body[k]);
-    sets.push(`${k}=$${vals.length}`);
-  }
+  try {
+    for (const k of allowed) if (k in (req.body || {})) {
+      vals.push(k === 'services' ? normalizeServices(req.body[k])
+        : k === 'difficulty' ? normalizeDifficulty(req.body[k])
+        : req.body[k] === '' ? null : req.body[k]);
+      sets.push(`${k}=$${vals.length}`);
+    }
+  } catch (e) { return res.status(400).json({ error: e.message }); }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
   vals.push(req.params.id);
   const { rows: [s] } = await pool.query(

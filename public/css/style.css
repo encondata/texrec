@@ -656,6 +656,15 @@ body.has-gsap .reveal { transition: none; } /* GSAP drives these instead */
   .callout::before { display: none; }
 }
 
+/* dive-site difficulty badge */
+.diff-badge {
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
+  border-radius: 100px; padding: 3px 11px;
+}
+.diff-badge.beginner  { background: #e7f5ed; color: var(--ok); }
+.diff-badge.advanced  { background: #fff3dd; color: var(--warn); }
+.diff-badge.technical { background: #fdecec; color: var(--red-deep); }
+
 /* course progression pathway */
 .pathway {
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
