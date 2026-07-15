@@ -74,13 +74,14 @@ function medicalFlag(c, compact = false) {
   return `<span class="form-flag ${s.color}" title="${esc(s.tip)}">${s.icon} ${esc(compact ? s.badge : 'Medical: ' + s.badge)}</span>`;
 }
 
-// per-registration validation: needs paid + medical + welcome packet + coursework.
-// Missing a document → "Pending documents"; only coursework left → "Pending coursework".
+// per-registration validation: needs paid + medical + coursework. The welcome
+// packet is tracked separately (back-end only) and does not gate validation.
+// Missing paid/medical → "Pending documents"; only coursework left → "Pending coursework".
 function regValidation(r, cust) {
   const medOk = medicalCleared(cust);
-  if (r.paid && medOk && r.welcome_packet_sent && r.coursework_complete)
+  if (r.paid && medOk && r.coursework_complete)
     return { key: 'validated', label: 'Validated', color: 'green' };
-  if (!r.paid || !medOk || !r.welcome_packet_sent)
+  if (!r.paid || !medOk)
     return { key: 'pending_docs', label: 'Pending documents', color: 'red' };
   return { key: 'pending_coursework', label: 'Pending coursework', color: 'yellow' };
 }
