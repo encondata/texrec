@@ -60,6 +60,7 @@ async function loadRegs() {
       <td><span class="form-flag ${regValidation(r, r).color}" title="Paid, medical & coursework">${regValidation(r, r).label}</span>
         ${r.needs_scheduling ? `<br><span class="form-flag red" style="font-size:11px;padding:2px 7px;margin-top:4px;display:inline-block" title="No class sessions scheduled yet">⚠ Needs scheduling</span>` : ''}</td>
       <td><div class="row-actions">
+        ${r.customer_id ? `<button class="btn btn-sm btn-ghost" data-reccust="${r.customer_id}">Record</button>` : ''}
         ${r.status !== 'confirmed' ? `<button class="btn btn-sm btn-red" data-act="confirmed" data-id="${r.id}">Confirm</button>` : ''}
         ${r.status !== 'cancelled' ? `<button class="btn btn-sm btn-ghost" data-act="cancelled" data-id="${r.id}">Cancel</button>` : ''}
         ${r.status === 'cancelled' ? `<button class="btn btn-sm btn-ghost" data-act="pending" data-id="${r.id}">Reopen</button>` : ''}
@@ -72,6 +73,10 @@ async function loadRegs() {
     await authed(`/api/admin/registrations/${b.dataset.id}`, {
       method: 'PATCH', body: { status: b.dataset.act } });
     loadRegs();
+  }));
+  $$('#reg-rows [data-reccust]').forEach(b => b.addEventListener('click', () => {
+    switchTab('customers');
+    openCustomerDetail(+b.dataset.reccust);
   }));
 }
 
@@ -1380,6 +1385,37 @@ async function loadCustomers() {
 }
 $('#cust-search-btn').addEventListener('click', loadCustomers);
 $('#cust-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadCustomers(); });
+
+// manually add a customer
+$('#cust-add-toggle').addEventListener('click', () => {
+  const f = $('#cust-add-form');
+  const showing = f.style.display !== 'none';
+  f.style.display = showing ? 'none' : '';
+  if (!showing) f.elements.first_name.focus();
+});
+$('#cust-add-cancel').addEventListener('click', () => {
+  $('#cust-add-form').reset(); $('#cust-add-form').style.display = 'none'; $('#cust-add-msg').textContent = '';
+});
+$('#cust-add-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, msg = $('#cust-add-msg');
+  const body = Object.fromEntries(new FormData(f));
+  try {
+    const c = await authed('/api/admin/customers', { method: 'POST', body });
+    f.reset(); f.style.display = 'none'; msg.textContent = '';
+    await loadCustomers();
+    openCustomerDetail(c.id);
+  } catch (err) {
+    if (err.data?.id) {   // already exists — jump straight to their record
+      f.reset(); f.style.display = 'none'; msg.textContent = '';
+      await loadCustomers();
+      openCustomerDetail(err.data.id);
+      return;
+    }
+    msg.style.color = 'var(--red)';
+    msg.textContent = err.message;
+  }
+});
 
 let detailCustomerId = null;
 

@@ -62,7 +62,13 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// no-cache on HTML/JS/CSS so a redeploy is picked up immediately (ETag still yields
+// cheap 304s when unchanged); without this, browsers heuristically serve stale assets.
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders(res, filePath) {
+    if (/\.(html|js|css)$/i.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 
 // ---------- helpers ----------
 function verifyPassword(pw, stored) {
@@ -1246,6 +1252,24 @@ app.get('/api/admin/customers', requireAdmin, wrap(async (req, res) => {
   res.json(rows);
 }));
 
+// staff manually create a customer record (no portal password — they can set one later)
+app.post('/api/admin/customers', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const { first_name, last_name, email, phone } = req.body || {};
+  if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: 'First name, last name, and email are required.' });
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+  const { rows: [dupe] } = await pool.query('SELECT id FROM customers WHERE lower(email)=lower($1)', [email.trim()]);
+  if (dupe) return res.status(409).json({ error: 'A customer with that email already exists.', id: dupe.id });
+  const { rows: [c] } = await pool.query(
+    `INSERT INTO customers (email, first_name, last_name, phone)
+     VALUES (lower($1), $2, $3, $4) RETURNING id`,
+    [email.trim(), first_name.trim(), last_name.trim(), phone?.trim() || null]);
+  res.status(201).json(c);
+}));
+
 async function canTouchCustomer(adminUser, customerId) {
   if (adminUser.role !== 'instructor') return true;
   const ids = await instructorSessionIds(adminUser);
@@ -1764,7 +1788,10 @@ app.patch('/api/admin/staff/:id', requireAdmin, allow('admin'), wrap(async (req,
 // SPA-ish fallbacks for clean page URLs
 const pages = ['courses', 'trips', 'staff', 'about', 'calendar', 'admin', 'sites', 'gallery', 'account'];
 for (const p of pages) {
-  app.get(`/${p}`, (req, res) => res.sendFile(path.join(__dirname, '..', 'public', `${p}.html`)));
+  app.get(`/${p}`, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(__dirname, '..', 'public', `${p}.html`));
+  });
 }
 
 app.listen(PORT, () => console.log(`TexRec server on http://localhost:${PORT}`));

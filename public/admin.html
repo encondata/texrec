@@ -338,11 +338,25 @@ placeholder='[
 
   <!-- customers tab -->
   <div id="tab-customers" style="display:none">
-    <div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+    <div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <input id="cust-search" placeholder="Search name or email…"
         style="font-family:var(--font-body);font-size:15px;padding:10px 14px;border:1.5px solid var(--line);border-radius:7px;min-width:260px;background:#fff">
       <button class="btn btn-sm btn-ghost" id="cust-search-btn">Search</button>
+      <button class="btn btn-sm btn-red" id="cust-add-toggle" style="margin-left:auto">+ Add Customer</button>
     </div>
+    <form id="cust-add-form" class="card" style="display:none;box-shadow:none;margin-bottom:16px"><div class="pad" style="padding:16px 18px">
+      <div class="field-row">
+        <div class="field"><label>First name *</label><input name="first_name" required></div>
+        <div class="field"><label>Last name *</label><input name="last_name" required></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Email *</label><input name="email" type="email" required></div>
+        <div class="field"><label>Phone</label><input name="phone" type="tel"></div>
+      </div>
+      <button class="btn btn-sm btn-red" type="submit">Create Customer</button>
+      <button class="btn btn-sm btn-ghost" type="button" id="cust-add-cancel">Cancel</button>
+      <span id="cust-add-msg" style="margin-left:12px;font-weight:600"></span>
+    </div></form>
     <div class="table-scroll">
       <table class="data">
         <thead><tr>
