@@ -217,8 +217,61 @@ async function openSessionDetail(id) {
   }));
 
   renderSessionMedia(media);
+  loadMeetings(id);
   $('#session-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+// ---------- class "Sessions" (dated events) editor in the detail panel ----------
+const fmtTime = t => {
+  if (!t) return '—';
+  const [h, m] = String(t).split(':'); const H = +h;
+  return `${(H % 12) || 12}:${m} ${H < 12 ? 'AM' : 'PM'}`;
+};
+
+async function loadMeetings(sessionId) {
+  const sec = $('#sd-sessions-section');
+  if (me?.role === 'instructor') { sec.style.display = 'none'; return; }   // schedule editing is staff+
+  sec.style.display = '';
+  const sel = $('#m-type');
+  if (!sel.dataset.filled) {
+    sel.innerHTML = SESSION_TYPES.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
+    sel.dataset.filled = '1';
+  }
+  const meetings = await authed(`/api/admin/sessions/${sessionId}/meetings`);
+  $('#sd-sessions').innerHTML = meetings.length ? meetings.map(m => `
+    <tr>
+      <td><span class="chip">${SESSION_TYPE_LABEL[m.type] || m.type}</span></td>
+      <td>${esc(m.title) || '—'}</td>
+      <td>${fmtDate(m.meeting_date.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}</td>
+      <td>${fmtTime(m.start_time)}</td>
+      <td style="font-size:13.5px">${esc(m.location) || '—'}</td>
+      <td>${m.enrolled}/${m.capacity}</td>
+      <td><button class="btn btn-sm btn-ghost" data-mdel="${m.id}">Delete</button></td>
+    </tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:14px">No sessions scheduled yet.</td></tr>';
+  $$('#sd-sessions [data-mdel]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete this session date?')) return;
+    await authed(`/api/admin/meetings/${b.dataset.mdel}`, { method: 'DELETE' });
+    loadMeetings(sessionId);
+  }));
+}
+
+$('#meeting-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('#meeting-msg'), f = e.target;
+  const body = {
+    type: f.type.value, title: f.title.value.trim(), meeting_date: f.meeting_date.value,
+    start_time: f.start_time.value || null, location: f.location.value.trim(),
+    capacity: +f.capacity.value || 6,
+  };
+  try {
+    await authed(`/api/admin/sessions/${detailSessionId}/meetings`, { method: 'POST', body });
+    f.reset(); f.capacity.value = 6;
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Added ✓';
+    setTimeout(() => { msg.textContent = ''; }, 2000);
+    loadMeetings(detailSessionId);
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
 
 // ---------- crew management (explicit add/remove, in the detail panel) ----------
 function renderCrew(s) {
@@ -1078,6 +1131,7 @@ async function loadCourses() {
     f.call_for_price.checked = !!c.call_for_price;
     f.prereq_course_id.value = c.prereq_course_id ?? '';
     f.active.value = String(c.active);
+    setRequirements(c.requirements);
     $('#course-form-title').textContent = `Editing: ${c.name}`;
     $('#course-submit').textContent = 'Save Changes';
     $('#course-cancel').style.display = '';
@@ -1091,9 +1145,37 @@ async function loadCourses() {
   }));
 }
 
+// ---------- course session-requirements editor ----------
+function reqRowHTML(type = 'pool', count = 1) {
+  const opts = SESSION_TYPES.map(t => `<option value="${t.key}" ${t.key === type ? 'selected' : ''}>${t.label}</option>`).join('');
+  return `<div class="req-row" style="display:flex;gap:8px;align-items:center">
+    <select class="req-type" style="flex:1;font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff">${opts}</select>
+    <input class="req-count" type="number" min="1" value="${count}" title="How many required"
+      style="width:80px;font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px">
+    <button type="button" class="btn btn-sm btn-ghost req-del" title="Remove">✕</button>
+  </div>`;
+}
+function addReqRow(type, count) {
+  $('#req-rows').insertAdjacentHTML('beforeend', reqRowHTML(type, count));
+  const row = $('#req-rows').lastElementChild;
+  row.querySelector('.req-del').addEventListener('click', () => row.remove());
+}
+function setRequirements(reqs) {
+  $('#req-rows').innerHTML = '';
+  (reqs || []).forEach(r => addReqRow(r.type, r.count));
+}
+function gatherRequirements() {
+  return $$('#req-rows .req-row').map(row => ({
+    type: row.querySelector('.req-type').value,
+    count: parseInt(row.querySelector('.req-count').value, 10) || 1,
+  }));
+}
+$('#req-add').addEventListener('click', () => addReqRow());
+
 function resetCourseForm() {
   const f = $('#course-form');
   f.reset(); f.elements.id.value = ''; f.elements.sort.value = '99'; f.elements.agency.value = 'SDI';
+  setRequirements([]);
   $('#course-form-title').textContent = 'Add a course';
   $('#course-submit').textContent = 'Add Course';
   $('#course-cancel').style.display = 'none';
@@ -1176,6 +1258,7 @@ $('#course-form').addEventListener('submit', async e => {
     price_cents: Math.round(+f.price.value * 100), call_for_price: f.call_for_price.checked,
     prereq_course_id: f.prereq_course_id.value ? +f.prereq_course_id.value : '',
     sort: +f.sort.value || 0, active: f.active.value === 'true',
+    requirements: gatherRequirements(),
   };
   try {
     if (f.id.value) await authed(`/api/admin/courses/${f.id.value}`, { method: 'PATCH', body });

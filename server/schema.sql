@@ -132,6 +132,48 @@ CREATE TABLE registrations (
 CREATE INDEX idx_reg_session ON registrations(session_id);
 CREATE INDEX idx_reg_status ON registrations(status);
 
+-- completion rubric: how many of each session type a course requires
+CREATE TABLE course_requirements (
+  id             SERIAL PRIMARY KEY,
+  course_id      INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  session_type   TEXT NOT NULL,                 -- academics | pool | open_water | other
+  required_count INTEGER NOT NULL DEFAULT 1,
+  sort           INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (course_id, session_type)
+);
+CREATE INDEX idx_reqs_course ON course_requirements(course_id);
+
+-- dated events under a class (UI: "Sessions") — each with its own roster/capacity
+CREATE TABLE class_meetings (
+  id           SERIAL PRIMARY KEY,
+  session_id   INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE, -- parent class
+  type         TEXT NOT NULL DEFAULT 'other',   -- academics | pool | open_water | other
+  title        TEXT,                            -- optional label, e.g. "Lake Day 2"
+  meeting_date DATE NOT NULL,
+  start_time   TIME,
+  location     TEXT,
+  capacity     INTEGER NOT NULL DEFAULT 6,
+  notes        TEXT,
+  sort         INTEGER NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_meetings_session ON class_meetings(session_id);
+CREATE INDEX idx_meetings_date ON class_meetings(meeting_date);
+
+-- who is scheduled for / completed which session; meeting_id may belong to another
+-- class, enabling cross-group makeups. Completion rolls up against course_requirements.
+CREATE TABLE meeting_attendance (
+  id              SERIAL PRIMARY KEY,
+  meeting_id      INTEGER NOT NULL REFERENCES class_meetings(id) ON DELETE CASCADE,
+  registration_id INTEGER NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
+  status          TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | attended | completed | no_show | excused
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (meeting_id, registration_id),
+  CONSTRAINT valid_attendance_status CHECK (status IN ('scheduled','attended','completed','no_show','excused'))
+);
+CREATE INDEX idx_attendance_meeting ON meeting_attendance(meeting_id);
+CREATE INDEX idx_attendance_reg ON meeting_attendance(registration_id);
+
 CREATE TABLE admin_users (
   id            SERIAL PRIMARY KEY,
   email         TEXT NOT NULL UNIQUE,

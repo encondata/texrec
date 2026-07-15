@@ -164,6 +164,25 @@
         </form>
       </div>
 
+      <!-- dated Sessions under this class (pool nights, lake days…) -->
+      <div class="staff-only" id="sd-sessions-section">
+        <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Sessions
+          <span style="font-weight:400;text-transform:none;letter-spacing:0"> — the individual dates for this class</span></h4>
+        <div class="table-scroll"><table class="data"><thead><tr>
+          <th>Type</th><th>Name</th><th>Date</th><th>Time</th><th>Location</th><th>Cap</th><th></th>
+        </tr></thead><tbody id="sd-sessions"></tbody></table></div>
+        <form id="meeting-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+          <div class="field" style="margin:0;min-width:150px"><label>Type</label><select name="type" id="m-type"></select></div>
+          <div class="field" style="margin:0"><label>Name (optional)</label><input name="title" placeholder="e.g. Lake Day 2"></div>
+          <div class="field" style="margin:0"><label>Date</label><input name="meeting_date" type="date" required></div>
+          <div class="field" style="margin:0"><label>Time</label><input name="start_time" type="time"></div>
+          <div class="field" style="margin:0;min-width:160px"><label>Location</label><input name="location" list="s-locations" placeholder="site or address"></div>
+          <div class="field" style="margin:0"><label>Cap</label><input name="capacity" type="number" min="1" value="6" style="width:72px"></div>
+          <button class="btn btn-sm btn-red" type="submit">Add Session</button>
+          <span id="meeting-msg" style="font-weight:600;font-size:13px"></span>
+        </form>
+      </div>
+
       <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Roster</h4>
       <div class="table-scroll"><table class="data"><thead><tr>
         <th>Student</th><th>Contact</th><th>Cert Level</th><th>Status</th><th></th>
@@ -222,6 +241,11 @@
           <div class="field"><label>Sort (tiebreak within step)</label><input name="sort" type="number" value="99"></div>
           <div class="field"><label>Visible on site</label>
             <select name="active"><option value="true">Yes — listed publicly</option><option value="false">No — hidden</option></select></div>
+        </div>
+        <div class="field"><label>Session requirements
+          <span style="font-weight:400;text-transform:none">(what a student must complete to finish — e.g. 1 Pool + 2 Open Water)</span></label>
+          <div id="req-rows" style="display:flex;flex-direction:column;gap:8px"></div>
+          <button type="button" class="btn btn-sm btn-ghost" id="req-add" style="margin-top:8px">+ Add requirement</button>
         </div>
         <button class="btn btn-sm btn-red" type="submit" id="course-submit">Add Course</button>
         <button class="btn btn-sm btn-ghost" type="button" id="course-cancel" style="display:none;margin-left:8px">Cancel Edit</button>

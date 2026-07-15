@@ -37,6 +37,15 @@ const priceLabel = (cents, callForPrice) =>
     : (cents && cents > 0) ? money(cents)
     : 'Free';
 
+// session (dated event) types — the completion components a course is built from
+const SESSION_TYPES = [
+  { key: 'academics', label: 'Academics / Classroom' },
+  { key: 'pool', label: 'Pool / Confined Water' },
+  { key: 'open_water', label: 'Open Water Dive' },
+  { key: 'other', label: 'Other' },
+];
+const SESSION_TYPE_LABEL = Object.fromEntries(SESSION_TYPES.map(t => [t.key, t.label]));
+
 // ---------- medical / forms + registration validation (shared: admin + account) ----------
 // a date "on file" counts as current for one year from that date
 function withinYear(dateStr) {

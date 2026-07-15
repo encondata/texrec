@@ -369,6 +369,55 @@ app.patch('/api/admin/registrations/:id/checklist', requireAdmin, wrap(async (re
   res.json(updated);
 }));
 
+// ---------- admin: class "Sessions" (dated events under a class = class_meetings) ----------
+app.get('/api/admin/sessions/:id/meetings', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT m.*, (SELECT count(*)::int FROM meeting_attendance a WHERE a.meeting_id = m.id) AS enrolled
+     FROM class_meetings m WHERE m.session_id = $1
+     ORDER BY m.meeting_date, m.start_time NULLS FIRST, m.sort, m.id`, [req.params.id]);
+  res.json(rows);
+}));
+
+app.post('/api/admin/sessions/:id/meetings', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b.meeting_date || '')) return res.status(400).json({ error: 'A valid date is required.' });
+  const type = b.type || 'other';
+  if (!SESSION_TYPE_KEYS.includes(type)) return res.status(400).json({ error: 'Invalid session type.' });
+  const { rows: [m] } = await pool.query(
+    `INSERT INTO class_meetings (session_id,type,title,meeting_date,start_time,location,capacity,notes,sort)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [req.params.id, type, b.title?.trim() || null, b.meeting_date, b.start_time || null,
+     b.location?.trim() || null, Math.max(1, parseInt(b.capacity, 10) || 6),
+     b.notes?.trim() || null, parseInt(b.sort, 10) || 0]);
+  res.status(201).json(m);
+}));
+
+app.patch('/api/admin/meetings/:id', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const b = req.body || {};
+  const sets = [], vals = [];
+  for (const k of ['type', 'title', 'meeting_date', 'start_time', 'location', 'capacity', 'notes', 'sort']) {
+    if (!(k in b)) continue;
+    let v = b[k];
+    if (k === 'type' && !SESSION_TYPE_KEYS.includes(v)) return res.status(400).json({ error: 'Invalid session type.' });
+    if (k === 'capacity') v = Math.max(1, parseInt(v, 10) || 1);
+    if (k === 'sort') v = parseInt(v, 10) || 0;
+    if (['title', 'location', 'notes', 'start_time'].includes(k) && (v === '' || v == null)) v = null;
+    vals.push(v); sets.push(`${k}=$${vals.length}`);
+  }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
+  vals.push(req.params.id);
+  const { rows: [m] } = await pool.query(
+    `UPDATE class_meetings SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`, vals);
+  if (!m) return res.status(404).json({ error: 'Session not found.' });
+  res.json(m);
+}));
+
+app.delete('/api/admin/meetings/:id', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const { rowCount } = await pool.query('DELETE FROM class_meetings WHERE id=$1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: 'Session not found.' });
+  res.json({ ok: true });
+}));
+
 app.get('/api/admin/sessions', requireAdmin, wrap(async (req, res) => {
   const own = req.admin.role === 'instructor' ? await instructorSessionIds(req.admin) : null;
   const { rows } = await pool.query(
@@ -819,8 +868,33 @@ app.get('/api/admin/courses', requireAdmin, allow('admin'), wrap(async (req, res
   const { rows } = await pool.query(
     `SELECT c.*, p.name AS prereq_course_name FROM courses c
      LEFT JOIN courses p ON p.id = c.prereq_course_id ORDER BY c.sort, c.id`);
+  const { rows: reqs } = await pool.query(
+    `SELECT course_id, session_type, required_count FROM course_requirements ORDER BY course_id, sort, id`);
+  const byCourse = {};
+  reqs.forEach(r => (byCourse[r.course_id] ||= []).push({ type: r.session_type, count: r.required_count }));
+  rows.forEach(c => { c.requirements = byCourse[c.id] || []; });
   res.json(rows);
 }));
+
+const SESSION_TYPE_KEYS = ['academics', 'pool', 'open_water', 'other'];
+
+// replace a course's completion requirements with the given [{type,count}] list
+async function saveRequirements(courseId, requirements) {
+  if (!Array.isArray(requirements)) return;
+  await pool.query('DELETE FROM course_requirements WHERE course_id=$1', [courseId]);
+  let sort = 0;
+  for (const r of requirements) {
+    const type = String(r?.type ?? r?.session_type ?? '').trim();
+    const count = parseInt(r?.count ?? r?.required_count, 10);
+    if (!SESSION_TYPE_KEYS.includes(type) || !(count >= 1)) continue;
+    await pool.query(
+      `INSERT INTO course_requirements (course_id, session_type, required_count, sort)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (course_id, session_type) DO UPDATE
+         SET required_count = EXCLUDED.required_count, sort = EXCLUDED.sort`,
+      [courseId, type, count, sort += 10]);
+  }
+}
 
 async function insertCourse(entry) {
   const { name, level, agency, blurb, description, prerequisites, duration,
@@ -852,7 +926,11 @@ async function insertCourse(entry) {
 }
 
 app.post('/api/admin/courses', requireAdmin, allow('admin'), wrap(async (req, res) => {
-  try { res.status(201).json(await insertCourse(req.body)); }
+  try {
+    const c = await insertCourse(req.body);
+    await saveRequirements(c.id, req.body.requirements);
+    res.status(201).json(c);
+  }
   catch (e) { res.status(e.message.includes('already exists') ? 409 : 400).json({ error: e.message }); }
 }));
 
@@ -876,13 +954,20 @@ app.patch('/api/admin/courses/:id', requireAdmin, allow('admin'), wrap(async (re
   }
   const allowed = ['name', 'level', 'agency', 'blurb', 'description', 'prerequisites',
                    'duration', 'price_cents', 'call_for_price', 'prereq_course_id', 'sort', 'active'];
+  const hasReqs = 'requirements' in (req.body || {});
   const sets = [], vals = [];
   for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k] === '' ? null : req.body[k]); sets.push(`${k}=$${vals.length}`); }
-  if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
-  vals.push(req.params.id);
-  const { rows: [c] } = await pool.query(
-    `UPDATE courses SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`, vals);
+  if (!sets.length && !hasReqs) return res.status(400).json({ error: 'Nothing to update.' });
+  let c;
+  if (sets.length) {
+    vals.push(req.params.id);
+    ({ rows: [c] } = await pool.query(
+      `UPDATE courses SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`, vals));
+  } else {
+    ({ rows: [c] } = await pool.query('SELECT * FROM courses WHERE id=$1', [req.params.id]));
+  }
   if (!c) return res.status(404).json({ error: 'Course not found.' });
+  if (hasReqs) await saveRequirements(c.id, req.body.requirements);
   res.json(c);
 }));
 
