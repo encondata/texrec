@@ -26,6 +26,11 @@
     <div class="cal-head">
       <div class="cal-title" id="cal-title"></div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <select id="kind-filter" style="font-family:var(--font-body);font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
+          <option value="all">Classes &amp; Trips</option>
+          <option value="classes">Classes only</option>
+          <option value="trips">Trips only</option>
+        </select>
         <select id="course-filter" style="font-family:var(--font-body);font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
           <option value="">All courses</option>
         </select>
@@ -37,6 +42,10 @@
       </div>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-legend" id="cal-legend">
+      <span class="key"><span class="swatch"></span> Class</span>
+      <span class="key"><span class="swatch trip"></span> Trip</span>
+    </div>
 
     <div class="sec-head" style="margin:52px 0 22px">
       <div class="eyebrow">This Month</div>
@@ -90,6 +99,12 @@
         <p style="font-size:13px;color:var(--ink-soft);margin-top:12px;text-align:center">
           No payment due now — a TexRec team member will confirm your seat by email.</p>
       </form>
+      <div id="trip-cta" style="display:none">
+        <a class="btn btn-red" style="width:100%" href="/trips">See All Trip Details</a>
+        <p style="font-size:13px;color:var(--ink-soft);margin-top:12px;text-align:center">
+          To reserve a spot, call <a href="tel:+19725550163">(972) 555-0163</a> or stop by the shop —
+          every TexRec trip travels with our own staff.</p>
+      </div>
     </div>
   </div>
 </div>
