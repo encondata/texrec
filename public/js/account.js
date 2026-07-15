@@ -100,6 +100,12 @@ async function enterDash() {
           return `<div class="seats" style="margin-top:6px"><span class="form-flag ${v.color}">${
             v.key === 'validated' ? 'Validated registration ✓' : v.label}</span></div>`;
         })() : ''}
+        ${r.requirement_progress?.length ? `
+          <div class="det" style="margin-top:8px">${r.requirement_progress.map(p =>
+            `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}" style="font-size:11px;padding:2px 7px;margin-right:5px">${
+              SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join('')}</div>
+          <div style="margin-top:8px"><button class="btn btn-sm btn-ghost" data-mysess="${r.id}">Choose my sessions</button></div>
+          <div id="mysess-${r.id}" style="display:none;margin-top:10px"></div>` : ''}
       </div>
       <div></div>
     </div>`).join('')
@@ -218,6 +224,81 @@ $('#my-photo-form').addEventListener('submit', async e => {
   e.target.reset();
   enterDash();
   setTimeout(() => msg.textContent = '', 3000);
+});
+
+// ---------- customer self-service: choose class sessions ----------
+async function loadMySessions(regId) {
+  const box = $(`#mysess-${regId}`);
+  if (!box) return;
+  box.dataset.loaded = '1';
+  renderMySessions(regId, await cauthed(`/api/customer/registrations/${regId}/sessions`));
+}
+
+function renderMySessions(regId, data) {
+  const box = $(`#mysess-${regId}`);
+  if (!box) return;
+  const sched = data.scheduled.length ? data.scheduled.map(s => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
+      <div><strong>${SESSION_TYPE_LABEL[s.type] || s.type}</strong>${s.title ? ' · ' + esc(s.title) : ''}<br>
+        <span style="font-size:13px;color:var(--ink-soft)">${fmtDate(s.meeting_date.slice(0,10), { weekday:'short', month:'short', day:'numeric' })}${
+          s.start_time ? ' · ' + fmtTime(s.start_time) : ''}${s.location ? ' · ' + esc(s.location) : ''}${s.own_class ? '' : ' · makeup with another group'}</span></div>
+      <div>${['attended', 'completed'].includes(s.status)
+        ? '<span class="form-flag green" style="font-size:11px;padding:2px 7px">Done</span>'
+        : `<button class="btn btn-sm btn-ghost" data-mydel="${s.attendance_id}" data-reg="${regId}">Remove</button>`}</div>
+    </div>`).join('') : '<p style="color:var(--ink-soft);font-size:14px;margin:2px 0">No sessions chosen yet — auto-select or pick your dates below.</p>';
+  const cands = data.candidates.length ? `
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <select id="mycand-${regId}" style="flex:1;min-width:220px;font-family:var(--font-body);font-size:14px;padding:9px 11px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
+        <option value="">— choose a date to add —</option>
+        ${data.candidates.map(c => `<option value="${c.meeting_id}">${c.own_class ? '' : '[Makeup] '}${
+          SESSION_TYPE_LABEL[c.type] || c.type} · ${fmtDate(c.meeting_date.slice(0,10), { month:'short', day:'numeric' })}${
+          c.title ? ' · ' + esc(c.title) : ''} · ${Math.max(0, c.capacity - c.enrolled)} spots left</option>`).join('')}
+      </select>
+      <button class="btn btn-sm btn-red" data-myadd="${regId}">Add</button>
+    </div>` : '<p style="color:var(--ink-soft);font-size:13px;margin-top:10px">No more dates available right now — call us if you need options.</p>';
+  box.innerHTML = `<div style="background:var(--sand);border-radius:9px;padding:14px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:14.5px">Your sessions</strong>
+      <button class="btn btn-sm btn-ghost" data-myauto="${regId}">Auto-select for me</button>
+    </div>
+    ${sched}${cands}
+    <div class="form-msg" id="mysess-msg-${regId}" style="font-size:13px;margin-top:8px"></div>
+  </div>`;
+}
+
+// keep the panel open across a refresh, and refresh the class progress badges too
+async function refreshAfterSess(regId) {
+  await enterDash();
+  const box = $(`#mysess-${regId}`);
+  if (box) { box.style.display = ''; await loadMySessions(regId); }
+}
+
+// one delegated handler for all session controls (survives dashboard re-renders)
+$('#my-classes').addEventListener('click', async e => {
+  const t = e.target.closest('[data-mysess],[data-myauto],[data-myadd],[data-mydel]');
+  if (!t) return;
+  try {
+    if (t.dataset.mysess) {
+      const box = $(`#mysess-${t.dataset.mysess}`);
+      const opening = box.style.display === 'none';
+      box.style.display = opening ? '' : 'none';
+      if (opening && !box.dataset.loaded) await loadMySessions(+t.dataset.mysess);
+    } else if (t.dataset.myauto) {
+      await cauthed(`/api/customer/registrations/${t.dataset.myauto}/autofill`, { method: 'POST' });
+      await refreshAfterSess(+t.dataset.myauto);
+    } else if (t.dataset.myadd) {
+      const mid = $(`#mycand-${t.dataset.myadd}`).value;
+      if (!mid) return;
+      await cauthed(`/api/customer/registrations/${t.dataset.myadd}/sessions`, { method: 'POST', body: { meeting_id: +mid } });
+      await refreshAfterSess(+t.dataset.myadd);
+    } else if (t.dataset.mydel) {
+      await cauthed(`/api/customer/attendance/${t.dataset.mydel}`, { method: 'DELETE' });
+      await refreshAfterSess(+t.dataset.reg);
+    }
+  } catch (err) {
+    const msg = $(`#mysess-msg-${t.dataset.myauto || t.dataset.myadd || t.dataset.reg || t.dataset.mysess}`);
+    if (msg) { msg.className = 'form-msg err'; msg.textContent = err.message; } else alert(err.message);
+  }
 });
 
 $('#my-doc-form').addEventListener('submit', async e => {

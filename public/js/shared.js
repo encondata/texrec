@@ -45,6 +45,7 @@ const SESSION_TYPES = [
   { key: 'other', label: 'Other' },
 ];
 const SESSION_TYPE_LABEL = Object.fromEntries(SESSION_TYPES.map(t => [t.key, t.label]));
+const SESSION_TYPE_SHORT = { academics: 'Acad', pool: 'Pool', open_water: 'OW', other: 'Other' };
 
 // ---------- medical / forms + registration validation (shared: admin + account) ----------
 // a date "on file" counts as current for one year from that date
@@ -83,12 +84,14 @@ function medicalFlag(c, compact = false) {
   return `<span class="form-flag ${s.color}" title="${esc(s.tip)}">${s.icon} ${esc(compact ? s.badge : 'Medical: ' + s.badge)}</span>`;
 }
 
-// per-registration validation: needs paid + medical + coursework. The welcome
-// packet is tracked separately (back-end only) and does not gate validation.
+// per-registration validation: needs paid + medical + coursework. Coursework is the
+// computed coursework_done when present (all required sessions completed), else the
+// manual flag. The welcome packet is tracked separately and does not gate validation.
 // Missing paid/medical → "Pending documents"; only coursework left → "Pending coursework".
 function regValidation(r, cust) {
   const medOk = medicalCleared(cust);
-  if (r.paid && medOk && r.coursework_complete)
+  const courseworkOk = r.coursework_done != null ? r.coursework_done : !!r.coursework_complete;
+  if (r.paid && medOk && courseworkOk)
     return { key: 'validated', label: 'Validated', color: 'green' };
   if (!r.paid || !medOk)
     return { key: 'pending_docs', label: 'Pending documents', color: 'red' };
@@ -100,6 +103,14 @@ const fmtDate = (iso, opts = { month: 'short', day: 'numeric' }) =>
 
 const fmtRange = (a, b) => a === b ? fmtDate(a, { month: 'long', day: 'numeric', year: 'numeric' })
   : `${fmtDate(a, { month: 'short', day: 'numeric' })} – ${fmtDate(b, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+// a TIME string ("18:00:00") or a preformatted "6:00 PM" → "6:00 PM"
+const fmtTime = t => {
+  if (!t) return '';
+  if (/[ap]m/i.test(t)) return t;                 // already formatted
+  const [h, m] = String(t).split(':'); const H = +h;
+  return `${(H % 12) || 12}:${m} ${H < 12 ? 'AM' : 'PM'}`;
+};
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {

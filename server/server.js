@@ -266,6 +266,9 @@ app.post('/api/registrations', wrap(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, status`,
     [session_id, customer.id, first_name.trim(), last_name.trim(), email.trim(), phone.trim(),
      cert_level || null, notes || null, waitlisted ? 'waitlist' : 'pending']);
+  // best-effort: auto-schedule the student onto their class's sessions to meet the
+  // course requirements. Never let this fail the registration itself.
+  try { await autofillSessions(reg.id); } catch (e) { console.warn('autofill on register failed:', e.message); }
   const who = `${first_name.trim()} ${last_name.trim()}`;
   await notify(
     waitlisted ? 'waitlist' : 'registration',
@@ -335,6 +338,7 @@ app.get('/api/admin/registrations', requireAdmin, allow('admin','staff'), wrap(a
      LEFT JOIN customers cust ON cust.id = r.customer_id
      WHERE ($1::text IS NULL OR r.status = $1)
      ORDER BY (r.status='pending') DESC, s.start_date, r.created_at`, [status]);
+  await attachCoursework(rows);
   res.json(rows);
 }));
 
@@ -416,6 +420,166 @@ app.delete('/api/admin/meetings/:id', requireAdmin, allow('admin', 'staff'), wra
   const { rowCount } = await pool.query('DELETE FROM class_meetings WHERE id=$1', [req.params.id]);
   if (!rowCount) return res.status(404).json({ error: 'Session not found.' });
   res.json({ ok: true });
+}));
+
+// ---------- session scheduling / attendance / computed completion ----------
+const DONE_STATUSES = ['attended', 'completed'];
+
+// attach computed coursework_done + requirement_progress to registration rows.
+// If the course has requirements, completion is derived from attendance; otherwise
+// it falls back to the manual coursework_complete flag.
+async function attachCoursework(regs) {
+  if (!regs.length) return regs;
+  const { rows } = await pool.query(
+    `SELECT r.id AS reg_id, cr.session_type, cr.required_count,
+            (SELECT count(*)::int FROM meeting_attendance a JOIN class_meetings m ON m.id = a.meeting_id
+             WHERE a.registration_id = r.id AND m.type = cr.session_type AND a.status = ANY($2)) AS done
+     FROM registrations r
+     JOIN class_sessions s ON s.id = r.session_id
+     JOIN course_requirements cr ON cr.course_id = s.course_id
+     WHERE r.id = ANY($1)
+     ORDER BY cr.sort, cr.id`, [regs.map(r => r.id), DONE_STATUSES]);
+  const prog = {};
+  for (const row of rows) (prog[row.reg_id] ||= []).push(
+    { type: row.session_type, required: row.required_count, done: row.done });
+  for (const r of regs) {
+    const p = prog[r.id];
+    r.requirement_progress = p || [];
+    r.coursework_done = p ? p.every(x => x.done >= x.required) : !!r.coursework_complete;
+  }
+  return regs;
+}
+
+// auto-schedule a registration onto its own class's sessions to satisfy the course
+// requirements (earliest first, respecting per-session capacity). Returns count added.
+async function autofillSessions(registrationId) {
+  const { rows: [reg] } = await pool.query(
+    `SELECT r.id, r.session_id, s.course_id FROM registrations r
+     JOIN class_sessions s ON s.id = r.session_id WHERE r.id = $1`, [registrationId]);
+  if (!reg) throw new Error('Registration not found.');
+  const { rows: reqs } = await pool.query(
+    'SELECT session_type, required_count FROM course_requirements WHERE course_id = $1', [reg.course_id]);
+  const { rows: current } = await pool.query(
+    `SELECT m.type, count(*)::int AS cnt FROM meeting_attendance a
+     JOIN class_meetings m ON m.id = a.meeting_id WHERE a.registration_id = $1 GROUP BY m.type`, [registrationId]);
+  const have = Object.fromEntries(current.map(c => [c.type, c.cnt]));
+  let added = 0;
+  for (const req of reqs) {
+    let need = req.required_count - (have[req.session_type] || 0);
+    if (need <= 0) continue;
+    const { rows: cands } = await pool.query(
+      `SELECT m.id, m.capacity,
+              (SELECT count(*)::int FROM meeting_attendance a WHERE a.meeting_id = m.id) AS enrolled
+       FROM class_meetings m
+       WHERE m.session_id = $1 AND m.type = $2
+         AND NOT EXISTS (SELECT 1 FROM meeting_attendance a WHERE a.meeting_id = m.id AND a.registration_id = $3)
+       ORDER BY m.meeting_date, m.start_time NULLS FIRST, m.id`,
+      [reg.session_id, req.session_type, registrationId]);
+    for (const c of cands) {
+      if (need <= 0) break;
+      if (c.enrolled >= c.capacity) continue;
+      await pool.query(
+        `INSERT INTO meeting_attendance (meeting_id, registration_id, status) VALUES ($1,$2,'scheduled')
+         ON CONFLICT (meeting_id, registration_id) DO NOTHING`, [c.id, registrationId]);
+      need--; added++;
+    }
+  }
+  return added;
+}
+
+// a registration's scheduled sessions + candidate sessions to add (any class of same course)
+async function registrationSessions(registrationId) {
+  const { rows: [reg] } = await pool.query(
+    `SELECT r.id, r.session_id, s.course_id FROM registrations r
+     JOIN class_sessions s ON s.id = r.session_id WHERE r.id = $1`, [registrationId]);
+  if (!reg) return null;
+  const { rows: scheduled } = await pool.query(
+    `SELECT a.id AS attendance_id, a.status, m.id AS meeting_id, m.type, m.title,
+            m.meeting_date, m.start_time, m.location, cs.id AS class_id, cs.title AS class_title,
+            (m.session_id = $2) AS own_class
+     FROM meeting_attendance a
+     JOIN class_meetings m ON m.id = a.meeting_id
+     JOIN class_sessions cs ON cs.id = m.session_id
+     WHERE a.registration_id = $1
+     ORDER BY m.meeting_date, m.start_time NULLS FIRST`, [registrationId, reg.session_id]);
+  const { rows: candidates } = await pool.query(
+    `SELECT m.id AS meeting_id, m.type, m.title, m.meeting_date, m.start_time, m.location, m.capacity,
+            (SELECT count(*)::int FROM meeting_attendance a WHERE a.meeting_id = m.id) AS enrolled,
+            (m.session_id = $2) AS own_class, cs.title AS class_title
+     FROM class_meetings m
+     JOIN class_sessions cs ON cs.id = m.session_id
+     WHERE cs.course_id = $3
+       AND m.type IN (SELECT session_type FROM course_requirements WHERE course_id = $3)
+       AND m.meeting_date >= CURRENT_DATE - 1
+       AND NOT EXISTS (SELECT 1 FROM meeting_attendance a WHERE a.meeting_id = m.id AND a.registration_id = $1)
+     ORDER BY own_class DESC, m.meeting_date, m.start_time NULLS FIRST`,
+    [registrationId, reg.session_id, reg.course_id]);
+  return { scheduled, candidates };
+}
+
+// add a session to a registration (validates same-course + capacity). Used by staff & customer.
+async function addSessionToRegistration(registrationId, meetingId) {
+  const { rows: [reg] } = await pool.query(
+    `SELECT r.id, s.course_id FROM registrations r JOIN class_sessions s ON s.id = r.session_id WHERE r.id = $1`,
+    [registrationId]);
+  if (!reg) throw new Error('Registration not found.');
+  const { rows: [m] } = await pool.query(
+    `SELECT m.id, m.capacity, cs.course_id,
+            (SELECT count(*)::int FROM meeting_attendance a WHERE a.meeting_id = m.id) AS enrolled
+     FROM class_meetings m JOIN class_sessions cs ON cs.id = m.session_id WHERE m.id = $1`, [meetingId]);
+  if (!m) throw new Error('Session not found.');
+  if (m.course_id !== reg.course_id) throw new Error('That session belongs to a different course.');
+  const { rows: [dupe] } = await pool.query(
+    'SELECT 1 FROM meeting_attendance WHERE meeting_id=$1 AND registration_id=$2', [meetingId, registrationId]);
+  if (dupe) return;
+  if (m.enrolled >= m.capacity) throw new Error('That session is full.');
+  await pool.query(
+    `INSERT INTO meeting_attendance (meeting_id, registration_id, status) VALUES ($1,$2,'scheduled')`,
+    [meetingId, registrationId]);
+}
+
+app.get('/api/admin/registrations/:id/sessions', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const data = await registrationSessions(+req.params.id);
+  if (!data) return res.status(404).json({ error: 'Registration not found.' });
+  res.json(data);
+}));
+
+app.post('/api/admin/registrations/:id/autofill', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const added = await autofillSessions(+req.params.id);
+  res.json({ added, ...(await registrationSessions(+req.params.id)) });
+}));
+
+app.post('/api/admin/registrations/:id/sessions', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  if (!req.body?.meeting_id) return res.status(400).json({ error: 'meeting_id is required.' });
+  try { await addSessionToRegistration(+req.params.id, +req.body.meeting_id); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  res.json(await registrationSessions(+req.params.id));
+}));
+
+app.patch('/api/admin/attendance/:id', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const status = req.body?.status;
+  if (!['scheduled', 'attended', 'completed', 'no_show', 'excused'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid attendance status.' });
+  }
+  const { rows: [a] } = await pool.query(
+    'UPDATE meeting_attendance SET status=$1 WHERE id=$2 RETURNING id, registration_id, status', [status, req.params.id]);
+  if (!a) return res.status(404).json({ error: 'Attendance record not found.' });
+  res.json(a);
+}));
+
+app.delete('/api/admin/attendance/:id', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const { rowCount } = await pool.query('DELETE FROM meeting_attendance WHERE id=$1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: 'Attendance record not found.' });
+  res.json({ ok: true });
+}));
+
+// public: a class's session dates (for the calendar modal)
+app.get('/api/sessions/:id/meetings', wrap(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, type, title, meeting_date, to_char(start_time,'HH12:MI AM') AS start_time, location
+     FROM class_meetings WHERE session_id=$1
+     ORDER BY meeting_date, start_time NULLS FIRST, id`, [req.params.id]);
+  res.json(rows);
 }));
 
 app.get('/api/admin/sessions', requireAdmin, wrap(async (req, res) => {
@@ -1103,6 +1267,7 @@ app.get('/api/admin/customers/:id', requireAdmin, wrap(async (req, res) => {
      FROM registrations r JOIN class_sessions s ON s.id = r.session_id
      JOIN courses c ON c.id = s.course_id
      WHERE r.customer_id = $1 ORDER BY s.start_date DESC`, [req.params.id]);
+  await attachCoursework(registrations);
   const { rows: notes } = await pool.query(
     `SELECT n.*, a.name AS author_name, c.name AS course_name
      FROM customer_notes n
@@ -1455,6 +1620,7 @@ app.get('/api/customer/me', requireCustomer, wrap(async (req, res) => {
      JOIN class_sessions s ON s.id = r.session_id
      JOIN courses c ON c.id = s.course_id
      WHERE r.customer_id = $1 ORDER BY s.start_date DESC`, [req.customer.id]);
+  await attachCoursework(registrations);
   const { rows: notes } = await pool.query(
     `SELECT n.id, n.kind, n.body, n.cert_agency, n.cert_number, n.cert_date, n.created_at,
             a.name AS author_name, c.name AS course_name
@@ -1481,6 +1647,42 @@ app.get('/api/customer/me', requireCustomer, wrap(async (req, res) => {
     'SELECT avatar_filename IS NOT NULL AS has_avatar, share_contact FROM customers WHERE id=$1', [req.customer.id]);
   res.json({ customer: { ...req.customer, has_avatar: extra.has_avatar, share_contact: extra.share_contact },
              registrations, notes, media, documents });
+}));
+
+// ---------- customer self-service: choose / auto-fill their class sessions ----------
+async function customerOwnsReg(customerId, regId) {
+  const { rows: [r] } = await pool.query(
+    'SELECT 1 FROM registrations WHERE id=$1 AND customer_id=$2', [regId, customerId]);
+  return !!r;
+}
+
+app.get('/api/customer/registrations/:id/sessions', requireCustomer, wrap(async (req, res) => {
+  if (!await customerOwnsReg(req.customer.id, +req.params.id)) return res.status(403).json({ error: 'Not your registration.' });
+  res.json(await registrationSessions(+req.params.id));
+}));
+
+app.post('/api/customer/registrations/:id/autofill', requireCustomer, wrap(async (req, res) => {
+  if (!await customerOwnsReg(req.customer.id, +req.params.id)) return res.status(403).json({ error: 'Not your registration.' });
+  const added = await autofillSessions(+req.params.id);
+  res.json({ added, ...(await registrationSessions(+req.params.id)) });
+}));
+
+app.post('/api/customer/registrations/:id/sessions', requireCustomer, wrap(async (req, res) => {
+  if (!await customerOwnsReg(req.customer.id, +req.params.id)) return res.status(403).json({ error: 'Not your registration.' });
+  if (!req.body?.meeting_id) return res.status(400).json({ error: 'meeting_id is required.' });
+  try { await addSessionToRegistration(+req.params.id, +req.body.meeting_id); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  res.json(await registrationSessions(+req.params.id));
+}));
+
+app.delete('/api/customer/attendance/:id', requireCustomer, wrap(async (req, res) => {
+  const { rows: [a] } = await pool.query(
+    `SELECT a.id, a.status, r.customer_id FROM meeting_attendance a
+     JOIN registrations r ON r.id = a.registration_id WHERE a.id=$1`, [req.params.id]);
+  if (!a || a.customer_id !== req.customer.id) return res.status(403).json({ error: 'Not your session.' });
+  if (DONE_STATUSES.includes(a.status)) return res.status(400).json({ error: 'That session is already marked complete — contact us to change it.' });
+  await pool.query('DELETE FROM meeting_attendance WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
 }));
 
 // ---------- admin: my profile ----------

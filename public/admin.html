@@ -405,9 +405,31 @@ placeholder='[
       <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Class History &amp; Verification</h4>
       <div class="table-scroll"><table class="data"><thead><tr>
         <th>Class</th><th>Dates</th><th>Enrolled</th>
-        <th style="text-align:center">Paid</th><th style="text-align:center">Coursework</th>
-        <th style="text-align:center">Welcome Packet</th><th>Medical</th><th>Validation</th>
+        <th style="text-align:center">Paid</th><th>Coursework</th>
+        <th style="text-align:center">Welcome Packet</th><th>Medical</th><th>Validation</th><th></th>
       </tr></thead><tbody id="cd-regs"></tbody></table></div>
+
+      <!-- per-registration session scheduler (opens from a row's "Sessions" button) -->
+      <div id="cd-sessions-panel" style="display:none;margin-top:14px;border:1.5px solid var(--line);border-radius:9px;padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+          <strong id="cds-title" style="font-size:15px"></strong>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-ghost" id="cds-autofill">Auto-fill required</button>
+            <button class="btn btn-sm btn-ghost" id="cds-close">Hide</button>
+          </div>
+        </div>
+        <div id="cds-progress" style="margin-bottom:10px"></div>
+        <div class="table-scroll"><table class="data"><thead><tr>
+          <th>Type</th><th>Session</th><th>Date</th><th>Group</th><th>Attendance</th><th></th>
+        </tr></thead><tbody id="cds-scheduled"></tbody></table></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+          <div class="field" style="margin:0;min-width:280px"><label>Add a session (own group or a makeup with another group)</label>
+            <select id="cds-candidate" style="font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff;width:100%"></select></div>
+          <button class="btn btn-sm btn-red" id="cds-add">Add Session</button>
+          <span id="cds-msg" style="font-weight:600;font-size:13px"></span>
+        </div>
+      </div>
+
       <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Documents
         <span style="font-weight:400;text-transform:none;letter-spacing:0"> — cert cards, medical forms, waivers (visible to the customer)</span></h4>
       <form id="doc-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">

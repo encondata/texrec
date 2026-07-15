@@ -174,6 +174,14 @@ function openClass(id) {
     <dt>Price</dt><dd><strong>${priceLabel(s.price_cents, s.call_for_price)}</strong></dd>
     <dt>Seats</dt><dd>${left > 0 ? `${left} of ${s.capacity} open` : 'Full — you can join the waitlist'}</dd>
     ${s.notes ? `<dt>Notes</dt><dd>${s.notes}</dd>` : ''}`;
+  // list this class's individual session dates (pool nights, lake days…) if defined
+  api(`/api/sessions/${s.id}/meetings`).then(ms => {
+    if (!ms.length || !currentSession || currentSession.id !== s.id) return;
+    const html = ms.map(m => `${esc(SESSION_TYPE_LABEL[m.type] || m.type)}${m.title ? ' — ' + esc(m.title) : ''}: ${
+      fmtDate(m.meeting_date.slice(0,10), { weekday:'short', month:'short', day:'numeric' })}${
+      m.start_time ? ' · ' + m.start_time : ''}${m.location ? ' · ' + esc(m.location) : ''}`).join('<br>');
+    $('#m-details').insertAdjacentHTML('beforeend', `<dt>Sessions</dt><dd>${html}</dd>`);
+  }).catch(() => {});
   $('#trip-cta').style.display = 'none';
   $('#form-msg').className = 'form-msg';
   $('#reg-form').reset();

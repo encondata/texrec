@@ -222,12 +222,6 @@ async function openSessionDetail(id) {
 }
 
 // ---------- class "Sessions" (dated events) editor in the detail panel ----------
-const fmtTime = t => {
-  if (!t) return '—';
-  const [h, m] = String(t).split(':'); const H = +h;
-  return `${(H % 12) || 12}:${m} ${H < 12 ? 'AM' : 'PM'}`;
-};
-
 async function loadMeetings(sessionId) {
   const sec = $('#sd-sessions-section');
   if (me?.role === 'instructor') { sec.style.display = 'none'; return; }   // schedule editing is staff+
@@ -243,7 +237,7 @@ async function loadMeetings(sessionId) {
       <td><span class="chip">${SESSION_TYPE_LABEL[m.type] || m.type}</span></td>
       <td>${esc(m.title) || '—'}</td>
       <td>${fmtDate(m.meeting_date.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}</td>
-      <td>${fmtTime(m.start_time)}</td>
+      <td>${fmtTime(m.start_time) || '—'}</td>
       <td style="font-size:13.5px">${esc(m.location) || '—'}</td>
       <td>${m.enrolled}/${m.capacity}</td>
       <td><button class="btn btn-sm btn-ghost" data-mdel="${m.id}">Delete</button></td>
@@ -1445,27 +1439,8 @@ async function openCustomerDetail(id) {
   $('#med-waiver-onfile').checked = !!cust.waiver_date;
   $('#med-waiver-date').value = cust.waiver_date ? cust.waiver_date.slice(0, 10) : '';
 
-  const canEdit = me?.role !== 'instructor';
-  $('#cd-regs').innerHTML = d.registrations.length ? d.registrations.map(r => {
-    const v = regValidation(r, cust);
-    const box = (field) =>
-      `<input type="checkbox" data-chk="${field}" data-reg="${r.id}" ${r[field] ? 'checked' : ''}
-        ${canEdit ? '' : 'disabled'} style="width:17px;height:17px;accent-color:var(--red);cursor:${canEdit ? 'pointer' : 'default'}">`;
-    return `
-    <tr data-regrow="${r.id}">
-      <td>${esc(r.course_name)}</td>
-      <td>${fmtRange(r.start_date.slice(0,10), r.end_date.slice(0,10))}</td>
-      <td><span class="status-pill ${r.status}">${r.status}</span></td>
-      <td style="text-align:center">${box('paid')}</td>
-      <td style="text-align:center">${box('coursework_complete')}</td>
-      <td style="text-align:center">${box('welcome_packet_sent')}</td>
-      <td><span class="form-flag ${medicalStatus(cust).color}">${medicalStatus(cust).icon} ${medicalStatus(cust).badge}</span></td>
-      <td data-valcell="${r.id}"><span class="form-flag ${v.color}">${v.label}</span></td>
-    </tr>`;
-  }).join('')
-    : '<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:16px">No registrations.</td></tr>';
-
-  $$('#cd-regs [data-chk]').forEach(cb => cb.addEventListener('change', onChecklistToggle));
+  $('#cd-sessions-panel').style.display = 'none';   // collapse the per-reg scheduler on (re)open
+  renderRegsTable();
 
   $('#note-session').innerHTML = '<option value="">— None —</option>' +
     d.registrations.map(r =>
@@ -1506,6 +1481,122 @@ const todayISO = () => {
   const d = new Date();   // local date, not UTC — avoids an evening off-by-one
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+// render the customer's Class History & Verification table from curDetail
+function renderRegsTable() {
+  const d = curDetail; if (!d) return;
+  const cust = d.customer;
+  const canEdit = me?.role !== 'instructor';
+  const mstat = medicalStatus(cust);
+  const box = (r, field) =>
+    `<input type="checkbox" data-chk="${field}" data-reg="${r.id}" ${r[field] ? 'checked' : ''}
+      ${canEdit ? '' : 'disabled'} style="width:17px;height:17px;accent-color:var(--red);cursor:${canEdit ? 'pointer' : 'default'}">`;
+  $('#cd-regs').innerHTML = d.registrations.length ? d.registrations.map(r => {
+    const v = regValidation(r, cust);
+    // courses with session requirements show computed progress; others keep the manual checkbox
+    const cw = r.requirement_progress?.length
+      ? r.requirement_progress.map(p => `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}"
+          style="font-size:11px;padding:2px 7px">${SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join(' ')
+      : `<div style="text-align:center">${box(r, 'coursework_complete')}</div>`;
+    const sessBtn = r.requirement_progress?.length && canEdit
+      ? `<button class="btn btn-sm btn-ghost" data-regsess="${r.id}" data-course="${esc(r.course_name)}">Sessions</button>` : '';
+    return `
+    <tr data-regrow="${r.id}">
+      <td>${esc(r.course_name)}</td>
+      <td>${fmtRange(r.start_date.slice(0,10), r.end_date.slice(0,10))}</td>
+      <td><span class="status-pill ${r.status}">${r.status}</span></td>
+      <td style="text-align:center">${box(r, 'paid')}</td>
+      <td>${cw}</td>
+      <td style="text-align:center">${box(r, 'welcome_packet_sent')}</td>
+      <td><span class="form-flag ${mstat.color}">${mstat.icon} ${mstat.badge}</span></td>
+      <td data-valcell="${r.id}"><span class="form-flag ${v.color}">${v.label}</span></td>
+      <td>${sessBtn}</td>
+    </tr>`;
+  }).join('')
+    : '<tr><td colspan="9" style="text-align:center;color:var(--ink-soft);padding:16px">No registrations.</td></tr>';
+  $$('#cd-regs [data-chk]').forEach(cb => cb.addEventListener('change', onChecklistToggle));
+  $$('#cd-regs [data-regsess]').forEach(b =>
+    b.addEventListener('click', () => openRegSessions(+b.dataset.regsess, b.dataset.course)));
+}
+
+// ---------- per-registration session scheduler (in the customer detail) ----------
+let cdsRegId = null;
+const ATT_LABELS = { scheduled: 'Scheduled', attended: 'Attended', completed: 'Completed', no_show: 'No-show', excused: 'Excused' };
+
+async function openRegSessions(regId, courseName) {
+  cdsRegId = regId;
+  $('#cds-title').textContent = `Sessions — ${courseName}`;
+  $('#cds-msg').textContent = '';
+  $('#cd-sessions-panel').style.display = '';
+  renderRegSessions(await authed(`/api/admin/registrations/${regId}/sessions`));
+  $('#cd-sessions-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderRegSessions(data) {
+  const prog = curDetail?.registrations.find(r => r.id === cdsRegId)?.requirement_progress || [];
+  $('#cds-progress').innerHTML = prog.map(p =>
+    `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}" style="margin-right:6px">${
+      SESSION_TYPE_LABEL[p.type] || p.type}: ${p.done}/${p.required}</span>`).join('');
+  $('#cds-scheduled').innerHTML = data.scheduled.length ? data.scheduled.map(s => `
+    <tr>
+      <td><span class="chip">${SESSION_TYPE_LABEL[s.type] || s.type}</span></td>
+      <td>${esc(s.title) || '—'}</td>
+      <td>${fmtDate(s.meeting_date.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}${s.start_time ? ' · ' + fmtTime(s.start_time) : ''}</td>
+      <td>${s.own_class ? '<span style="color:var(--ink-soft)">Own group</span>'
+        : `<span class="form-flag yellow" style="font-size:11px;padding:2px 7px">Makeup · ${esc(s.class_title) || 'other'}</span>`}</td>
+      <td><select data-att="${s.attendance_id}" style="font-family:var(--font-body);font-size:13px;padding:5px 7px;border:1.5px solid var(--line);border-radius:6px;background:#fff">
+        ${Object.entries(ATT_LABELS).map(([k, l]) => `<option value="${k}" ${s.status === k ? 'selected' : ''}>${l}</option>`).join('')}
+      </select></td>
+      <td><button class="btn btn-sm btn-ghost" data-attdel="${s.attendance_id}">Remove</button></td>
+    </tr>`).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:12px">No sessions scheduled yet.</td></tr>';
+  $('#cds-candidate').innerHTML = data.candidates.length
+    ? '<option value="">— choose a session to add —</option>' + data.candidates.map(c =>
+        `<option value="${c.meeting_id}">${c.own_class ? '' : '[Makeup] '}${SESSION_TYPE_LABEL[c.type] || c.type} · ${
+          esc(c.title) || 'session'} · ${fmtDate(c.meeting_date.slice(0,10), { month:'short', day:'numeric' })} · ${
+          c.enrolled}/${c.capacity} full${c.own_class ? '' : ' · ' + esc(c.class_title)}</option>`).join('')
+    : '<option value="">— no more sessions available —</option>';
+  $$('#cds-scheduled [data-att]').forEach(sel => sel.addEventListener('change', async () => {
+    try { await authed(`/api/admin/attendance/${sel.dataset.att}`, { method: 'PATCH', body: { status: sel.value } }); await afterSessionChange(); }
+    catch (err) { alert(err.message); }
+  }));
+  $$('#cds-scheduled [data-attdel]').forEach(b => b.addEventListener('click', async () => {
+    await authed(`/api/admin/attendance/${b.dataset.attdel}`, { method: 'DELETE' });
+    await afterSessionChange();
+  }));
+}
+
+// after any session change, refresh both the scheduler and the detail table (coursework/validation recompute server-side)
+async function afterSessionChange() {
+  const [sessions, detail] = await Promise.all([
+    authed(`/api/admin/registrations/${cdsRegId}/sessions`),
+    authed(`/api/admin/customers/${detailCustomerId}`),
+  ]);
+  curDetail = detail;
+  renderRegsTable();
+  renderRegSessions(sessions);
+}
+
+$('#cds-close').addEventListener('click', () => { $('#cd-sessions-panel').style.display = 'none'; });
+$('#cds-autofill').addEventListener('click', async () => {
+  const msg = $('#cds-msg');
+  msg.style.color = 'var(--ink-soft)'; msg.textContent = 'Filling…';
+  try {
+    const res = await authed(`/api/admin/registrations/${cdsRegId}/autofill`, { method: 'POST' });
+    msg.style.color = 'var(--ok)'; msg.textContent = `Added ${res.added} session${res.added === 1 ? '' : 's'}`;
+    await afterSessionChange();
+    setTimeout(() => { msg.textContent = ''; }, 2500);
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
+$('#cds-add').addEventListener('click', async () => {
+  const mid = $('#cds-candidate').value, msg = $('#cds-msg');
+  if (!mid) return;
+  try {
+    await authed(`/api/admin/registrations/${cdsRegId}/sessions`, { method: 'POST', body: { meeting_id: +mid } });
+    msg.textContent = '';
+    await afterSessionChange();
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
 
 // re-render every derived validation pill (and the medical column) in the detail table
 function refreshValidationCells() {
