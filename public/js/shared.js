@@ -51,7 +51,22 @@ async function api(path, opts = {}) {
 }
 
 // ---------- header / footer ----------
+function addFavicons() {
+  if (document.querySelector('link[rel="icon"]')) return;
+  const links = [
+    ['icon', '/img/favicon-32.png', '32x32'],
+    ['icon', '/img/favicon-64.png', '64x64'],
+    ['apple-touch-icon', '/img/apple-touch-icon.png', '180x180'],
+  ];
+  for (const [rel, href, sizes] of links) {
+    const l = document.createElement('link');
+    l.rel = rel; l.href = href; l.type = 'image/png'; l.sizes = sizes;
+    document.head.appendChild(l);
+  }
+}
+
 function renderChrome() {
+  addFavicons();
   const page = document.body.dataset.page || '';
   const links = [
     ['courses', 'Courses'], ['calendar', 'Calendar'], ['trips', 'Trips'],
@@ -63,7 +78,7 @@ function renderChrome() {
   header.innerHTML = `
     <div class="wrap bar">
       <a class="logo" href="/">
-        <span class="flag" aria-hidden="true"></span>
+        <img class="logo-mark" src="/img/texrec-logo.png" alt="TexRec" width="46" height="44">
         <span><span class="word">Tex<em>Rec</em></span>
         <span class="tag">Scuba Instruction · DFW</span></span>
       </a>
@@ -84,7 +99,7 @@ function renderChrome() {
     <div class="flag-line"></div>
     <div class="wrap cols">
       <div>
-        <a class="logo" href="/"><span class="flag"></span><span class="word">Tex<em>Rec</em></span></a>
+        <a class="logo" href="/"><img class="logo-mark" src="/img/texrec-logo.png" alt="TexRec" width="42" height="40"><span class="word">Tex<em>Rec</em></span></a>
         <p style="margin-top:14px;font-size:15px;max-width:280px">
           Scuba instruction, gear, and travel for North Texas.
           Small classes, private instruction available. Train local, dive everywhere.</p>

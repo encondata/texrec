@@ -71,10 +71,12 @@ h1, h2, h3, .display {
   height: 68px;
 }
 .logo {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 11px;
   text-decoration: none; color: var(--ink);
 }
 .logo .flag { font-size: 30px; }
+.logo-mark { display: block; height: 46px; width: auto; }
+footer .logo-mark { height: 40px; }
 .logo .word {
   font-family: var(--font-display);
   font-size: 26px; text-transform: uppercase; letter-spacing: .04em;

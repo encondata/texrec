@@ -22,3 +22,6 @@ DAN-Membership-Referral-Rewards-*.jpg
 .DS_Store
 *.log
 npm-debug.log*
+
+# raw logo source (processed version lives in public/img/)
+texreclogo.jpg
