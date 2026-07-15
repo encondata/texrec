@@ -101,10 +101,13 @@ async function enterDash() {
             v.key === 'validated' ? 'Validated registration ✓' : v.label}</span></div>`;
         })() : ''}
         ${r.requirement_progress?.length ? `
-          <div class="det" style="margin-top:8px">${r.requirement_progress.map(p =>
-            `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}" style="font-size:11px;padding:2px 7px;margin-right:5px">${
-              SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join('')}</div>
-          <div style="margin-top:8px"><button class="btn btn-sm btn-ghost" data-mysess="${r.id}">Choose my sessions</button></div>
+          ${r.needs_scheduling
+            ? `<div style="margin-top:8px"><span class="form-flag red" style="font-size:11.5px">⚠ Pick your class dates</span></div>`
+            : `<div class="det" style="margin-top:8px">${r.requirement_progress.map(p =>
+                `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}" style="font-size:11px;padding:2px 7px;margin-right:5px">${
+                  SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join('')}</div>`}
+          <div style="margin-top:8px"><button class="btn btn-sm ${r.needs_scheduling ? 'btn-red' : 'btn-ghost'}" data-mysess="${r.id}">${
+            r.needs_scheduling ? 'Choose my sessions' : 'My sessions'}</button></div>
           <div id="mysess-${r.id}" style="display:none;margin-top:10px"></div>` : ''}
       </div>
       <div></div>

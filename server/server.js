@@ -430,6 +430,7 @@ const DONE_STATUSES = ['attended', 'completed'];
 // it falls back to the manual coursework_complete flag.
 async function attachCoursework(regs) {
   if (!regs.length) return regs;
+  const ids = regs.map(r => r.id);
   const { rows } = await pool.query(
     `SELECT r.id AS reg_id, cr.session_type, cr.required_count,
             (SELECT count(*)::int FROM meeting_attendance a JOIN class_meetings m ON m.id = a.meeting_id
@@ -438,14 +439,20 @@ async function attachCoursework(regs) {
      JOIN class_sessions s ON s.id = r.session_id
      JOIN course_requirements cr ON cr.course_id = s.course_id
      WHERE r.id = ANY($1)
-     ORDER BY cr.sort, cr.id`, [regs.map(r => r.id), DONE_STATUSES]);
+     ORDER BY cr.sort, cr.id`, [ids, DONE_STATUSES]);
   const prog = {};
   for (const row of rows) (prog[row.reg_id] ||= []).push(
     { type: row.session_type, required: row.required_count, done: row.done });
+  const { rows: counts } = await pool.query(
+    'SELECT registration_id, count(*)::int AS n FROM meeting_attendance WHERE registration_id = ANY($1) GROUP BY registration_id', [ids]);
+  const scheduled = Object.fromEntries(counts.map(c => [c.registration_id, c.n]));
   for (const r of regs) {
     const p = prog[r.id];
     r.requirement_progress = p || [];
     r.coursework_done = p ? p.every(x => x.done >= x.required) : !!r.coursework_complete;
+    r.sessions_scheduled = scheduled[r.id] || 0;
+    // an enrolled student on a course that needs sessions, with nothing on their schedule
+    r.needs_scheduling = !!p && r.sessions_scheduled === 0 && ['pending', 'confirmed'].includes(r.status);
   }
   return regs;
 }

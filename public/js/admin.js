@@ -57,7 +57,8 @@ async function loadRegs() {
       <td style="font-size:14px"><a href="mailto:${esc(r.email)}">${esc(r.email)}</a><br>${esc(r.phone)}</td>
       <td style="font-size:14px;max-width:180px">${esc(r.notes) || '—'}</td>
       <td><span class="status-pill ${r.status}">${r.status}</span></td>
-      <td><span class="form-flag ${regValidation(r, r).color}" title="Paid, medical, welcome packet & coursework">${regValidation(r, r).label}</span></td>
+      <td><span class="form-flag ${regValidation(r, r).color}" title="Paid, medical & coursework">${regValidation(r, r).label}</span>
+        ${r.needs_scheduling ? `<br><span class="form-flag red" style="font-size:11px;padding:2px 7px;margin-top:4px;display:inline-block" title="No class sessions scheduled yet">⚠ Needs scheduling</span>` : ''}</td>
       <td><div class="row-actions">
         ${r.status !== 'confirmed' ? `<button class="btn btn-sm btn-red" data-act="confirmed" data-id="${r.id}">Confirm</button>` : ''}
         ${r.status !== 'cancelled' ? `<button class="btn btn-sm btn-ghost" data-act="cancelled" data-id="${r.id}">Cancel</button>` : ''}
@@ -1493,11 +1494,14 @@ function renderRegsTable() {
       ${canEdit ? '' : 'disabled'} style="width:17px;height:17px;accent-color:var(--red);cursor:${canEdit ? 'pointer' : 'default'}">`;
   $('#cd-regs').innerHTML = d.registrations.length ? d.registrations.map(r => {
     const v = regValidation(r, cust);
-    // courses with session requirements show computed progress; others keep the manual checkbox
-    const cw = r.requirement_progress?.length
-      ? r.requirement_progress.map(p => `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}"
-          style="font-size:11px;padding:2px 7px">${SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join(' ')
-      : `<div style="text-align:center">${box(r, 'coursework_complete')}</div>`;
+    // courses with session requirements show computed progress (or a scheduling
+    // nudge when nothing is booked yet); others keep the manual checkbox
+    const cw = r.needs_scheduling
+      ? `<span class="form-flag red" style="font-size:11px;padding:2px 7px" title="No sessions scheduled yet">⚠ Needs scheduling</span>`
+      : r.requirement_progress?.length
+        ? r.requirement_progress.map(p => `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}"
+            style="font-size:11px;padding:2px 7px">${SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join(' ')
+        : `<div style="text-align:center">${box(r, 'coursework_complete')}</div>`;
     const sessBtn = r.requirement_progress?.length && canEdit
       ? `<button class="btn btn-sm btn-ghost" data-regsess="${r.id}" data-course="${esc(r.course_name)}">Sessions</button>` : '';
     return `
