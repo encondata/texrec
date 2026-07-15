@@ -88,40 +88,36 @@ const CREW_ROLES = {
   instructor_trainee: 'Instructor-in-Training', divemaster_trainee: 'DM-in-Training',
 };
 let sessionCache = [];
+let crewStaffCache = [];   // active staff, for the crew picker in the detail panel
 
 async function loadSessions() {
   const isInstructor = me?.role === 'instructor';
   const reqs = [authed('/api/admin/sessions'), api('/api/courses')];
-  if (!isInstructor) reqs.push(authed('/api/admin/staff'));
-  const [sessions, courses, staff] = await Promise.all(reqs);
+  if (!isInstructor) reqs.push(authed('/api/admin/staff'), api('/api/sites'));
+  const [sessions, courses, staff, sites] = await Promise.all(reqs);
   sessionCache = sessions;
-  const activeStaff = (staff || []).filter(p => p.active);
+  crewStaffCache = (staff || []).filter(p => p.active);
 
   if (!isInstructor) {
     $('#s-course').innerHTML = courses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    // location typeahead: site name + city
+    $('#s-locations').innerHTML = (sites || []).map(s =>
+      `<option value="${esc(s.name)}${s.location ? ' — ' + esc(s.location) : ''}"></option>`).join('');
+    $('#crew-role').innerHTML = Object.entries(CREW_ROLES).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
   }
 
-  const crewChips = s => `<div class="crew-chips">
-    ${s.staff.map(p => `<span class="chip ${p.role}">${esc(p.name)} · ${CREW_ROLES[p.role]}
-      ${isInstructor ? '' : `<button data-unassign="${s.id}:${p.staff_id}" title="Remove">✕</button>`}</span>`).join('')}
-    ${isInstructor ? '' : `
-    <span style="display:inline-flex;gap:4px">
-      <select data-crew-staff="${s.id}" style="font-size:12px;padding:3px;border:1.5px solid var(--line);border-radius:5px;max-width:110px">
-        <option value="">+ Assign…</option>
-        ${activeStaff.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-      </select>
-      <select data-crew-role="${s.id}" style="font-size:12px;padding:3px;border:1.5px solid var(--line);border-radius:5px">
-        ${Object.entries(CREW_ROLES).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
-      </select>
-    </span>`}
-  </div>`;
+  // read-only crew chips for the row expansion
+  const crewChips = s => s.staff.length
+    ? `<div class="crew-chips">${s.staff.map(p =>
+        `<span class="chip ${p.role}">${esc(p.name)} · ${CREW_ROLES[p.role]}</span>`).join('')}</div>`
+    : '<span style="color:var(--ink-soft)">No crew assigned</span>';
 
   $('#session-rows').innerHTML = sessions.length ? sessions.map(s => {
     const lead = s.staff.find(p => p.role === 'instructor');
     return `
     <tr class="mrow" data-x="${s.id}">
       <td class="chev">▸</td>
-      <td><strong>${esc(s.course_name)}</strong></td>
+      <td><strong>${esc(s.title || s.course_name)}</strong>${s.title ? `<br><span style="font-size:12px;color:var(--ink-soft)">${esc(s.course_name)}</span>` : ''}</td>
       <td>${fmtRange(s.start_date.slice(0,10), s.end_date.slice(0,10))}</td>
       <td>${lead ? esc(lead.name) : '<span style="color:var(--warn);font-weight:700">Unassigned</span>'}
         ${s.staff.length > 1 ? `<span class="chip" style="font-size:10px">+${s.staff.length - 1} crew</span>` : ''}</td>
@@ -151,13 +147,15 @@ async function loadSessions() {
     f.id.value = s.id;
     f.course_id.value = s.course_id;
     f.course_id.disabled = true; // course can't change once scheduled
+    f.title.value = s.title || '';
     f.location.value = s.location;
     f.start_date.value = s.start_date.slice(0,10);
     f.end_date.value = s.end_date.slice(0,10);
     f.start_time.value = (s.start_time || '09:00').slice(0,5);
     f.capacity.value = s.capacity;
     f.notes.value = s.notes || '';
-    $('#session-form-title').textContent = `Editing: ${s.course_name} (${fmtDate(s.start_date.slice(0,10), { month: 'short', day: 'numeric' })})`;
+    setSingleDay(s.start_date.slice(0,10) === s.end_date.slice(0,10));
+    $('#session-form-title').textContent = `Editing: ${sessionCache.find(x=>x.id===s.id).title || s.course_name}`;
     $('#session-form button[type=submit]').textContent = 'Save Changes';
     openFormModal('session-form-card');
   }));
@@ -177,29 +175,18 @@ async function loadSessions() {
     loadSessions();
   }));
 
-  $$('#session-rows [data-crew-staff]').forEach(sel => sel.addEventListener('change', async () => {
-    if (!sel.value) return;
-    const sid = sel.dataset.crewStaff;
-    const role = $(`[data-crew-role="${sid}"]`).value;
-    sel.disabled = true;
-    try {
-      await authed(`/api/admin/sessions/${sid}/staff`, {
-        method: 'POST', body: { staff_id: +sel.value, role } });
-    } catch (err) { alert(err.message); }
-    loadSessions();
-    try { const res = await authed('/api/admin/notifications?unacked=1'); updateBadges(res.unacked); } catch {}
-  }));
-
-  $$('#session-rows [data-unassign]').forEach(b => b.addEventListener('click', async () => {
-    const [sid, stid] = b.dataset.unassign.split(':');
-    b.disabled = true;
-    await authed(`/api/admin/sessions/${sid}/staff/${stid}`, { method: 'DELETE' });
-    loadSessions();
-  }));
-
   $$('#session-rows [data-sdetail]').forEach(b =>
     b.addEventListener('click', () => openSessionDetail(+b.dataset.sdetail)));
 }
+
+// single-day toggle: hide the end-date field and mirror start → end on submit
+function setSingleDay(on) {
+  $('#s-singleday').checked = on;
+  $('#s-enddate-field').style.display = on ? 'none' : '';
+}
+$('#s-singleday').addEventListener('change', e => {
+  $('#s-enddate-field').style.display = e.target.checked ? 'none' : '';
+});
 
 // ---------- session detail: roster + media ----------
 let detailSessionId = null;
@@ -207,8 +194,9 @@ let detailSessionId = null;
 async function openSessionDetail(id) {
   detailSessionId = id;
   const s = sessionCache.find(x => x.id === id);
-  $('#sd-title').textContent = `${s.course_name} — ${fmtDate(s.start_date.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  $('#sd-title').textContent = `${s.title || s.course_name} — ${fmtDate(s.start_date.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}`;
   $('#session-detail').style.display = '';
+  renderCrew(s);
   const [roster, media] = await Promise.all([
     authed(`/api/admin/sessions/${id}/roster`),
     authed(`/api/admin/sessions/${id}/media`)]);
@@ -230,6 +218,50 @@ async function openSessionDetail(id) {
   renderSessionMedia(media);
   $('#session-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+// ---------- crew management (explicit add/remove, in the detail panel) ----------
+function renderCrew(s) {
+  if (me?.role === 'instructor') { $('#sd-crew-section').style.display = 'none'; return; }
+  $('#sd-crew-section').style.display = '';
+  $('#sd-crew').innerHTML = s.staff.length ? s.staff.map(p =>
+    `<span class="chip ${p.role}">${esc(p.name)} · ${CREW_ROLES[p.role]}
+      <button data-crewdel="${p.staff_id}" title="Remove">✕</button></span>`).join('')
+    : '<span style="color:var(--ink-soft)">No crew assigned yet.</span>';
+  // populate the picker with staff not already on the crew
+  const onCrew = new Set(s.staff.map(p => p.staff_id));
+  $('#crew-staff').innerHTML = crewStaffCache.filter(p => !onCrew.has(p.id))
+    .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')
+    || '<option value="">— everyone is assigned —</option>';
+  $$('#sd-crew [data-crewdel]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    await authed(`/api/admin/sessions/${detailSessionId}/staff/${b.dataset.crewdel}`, { method: 'DELETE' });
+    await refreshDetailSession();
+  }));
+}
+
+// re-fetch the sessions list, update caches, and re-render the open detail crew
+async function refreshDetailSession() {
+  sessionCache = await authed('/api/admin/sessions');
+  const s = sessionCache.find(x => x.id === detailSessionId);
+  if (s) renderCrew(s);
+}
+
+$('#crew-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('#crew-msg');
+  const f = e.target.elements;
+  if (!f.staff_id.value) return;
+  try {
+    await authed(`/api/admin/sessions/${detailSessionId}/staff`, {
+      method: 'POST', body: { staff_id: +f.staff_id.value, role: f.role.value } });
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Added ✓';
+    await refreshDetailSession();
+    try { const r = await authed('/api/admin/notifications?unacked=1'); updateBadges(r.unacked); } catch {}
+    setTimeout(() => msg.textContent = '', 2500);
+  } catch (err) {
+    msg.style.color = 'var(--red)'; msg.textContent = err.message;
+  }
+});
 
 function renderSessionMedia(media) {
   $('#sd-media').innerHTML = media.length ? media.map(m => {
@@ -280,7 +312,8 @@ function resetSessionForm() {
   f.elements.course_id.disabled = false;
   f.elements.capacity.value = '8';
   f.elements.start_time.value = '09:00';
-  f.elements.location.value = 'TexRec Indoor Pool — Carrollton, TX';
+  f.elements.location.value = 'TexRec HQ — Burleson, TX';
+  setSingleDay(false);
   $('#session-form-title').textContent = 'Add a class session';
   $('#session-form button[type=submit]').textContent = 'Add Session';
   $('#session-msg').textContent = '';
@@ -290,7 +323,8 @@ $('#session-form').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('#session-msg');
   const data = Object.fromEntries(new FormData(e.target));
-  if (!data.end_date) data.end_date = data.start_date;
+  // single-day class → end date mirrors the start date
+  if ($('#s-singleday').checked || !data.end_date) data.end_date = data.start_date;
   data.capacity = +data.capacity || 8;
   const id = data.id; delete data.id;
   try {
@@ -1005,7 +1039,7 @@ async function loadCourses() {
       <td class="chev">▸</td>
       <td><strong>${esc(c.name)}</strong></td>
       <td>${esc(c.level)}</td>
-      <td>${priceLabel(c.price_cents)}</td>
+      <td>${priceLabel(c.price_cents, c.call_for_price)}</td>
       <td><span class="status-pill ${c.active ? 'confirmed' : 'cancelled'}">${c.active ? 'visible' : 'hidden'}</span></td>
       <td><div class="row-actions">
         <button class="btn btn-sm btn-ghost" data-course-edit="${c.id}">Edit</button>
@@ -1040,6 +1074,7 @@ async function loadCourses() {
     for (const k of ['name', 'level', 'agency', 'blurb', 'description', 'prerequisites', 'duration', 'sort']) f[k].value = c[k] ?? '';
     f.id.value = c.id;
     f.price.value = Math.round(c.price_cents / 100);
+    f.call_for_price.checked = !!c.call_for_price;
     f.prereq_course_id.value = c.prereq_course_id ?? '';
     f.active.value = String(c.active);
     $('#course-form-title').textContent = `Editing: ${c.name}`;
@@ -1137,7 +1172,7 @@ $('#course-form').addEventListener('submit', async e => {
     name: f.name.value, level: f.level.value, agency: f.agency.value,
     blurb: f.blurb.value, description: f.description.value,
     prerequisites: f.prerequisites.value, duration: f.duration.value,
-    price_cents: Math.round(+f.price.value * 100),
+    price_cents: Math.round(+f.price.value * 100), call_for_price: f.call_for_price.checked,
     prereq_course_id: f.prereq_course_id.value ? +f.prereq_course_id.value : '',
     sort: +f.sort.value || 0, active: f.active.value === 'true',
   };
@@ -1190,6 +1225,7 @@ async function loadTrips() {
     f.end_date.value = t.end_date.slice(0,10);
     f.description.value = t.description;
     f.price.value = Math.round(t.price_cents / 100);
+    f.call_for_price.checked = !!t.call_for_price;
     f.spots_total.value = t.spots_total;
     f.spots_taken.value = t.spots_taken;
     f.active.value = String(t.active);
@@ -1229,7 +1265,7 @@ $('#trip-form').addEventListener('submit', async e => {
     title: f.title.value, destination: f.destination.value,
     start_date: f.start_date.value, end_date: f.end_date.value,
     description: f.description.value,
-    price_cents: Math.round(+f.price.value * 100),
+    price_cents: Math.round(+f.price.value * 100), call_for_price: f.call_for_price.checked,
     spots_total: +f.spots_total.value || 1, spots_taken: +f.spots_taken.value || 0,
     active: f.active.value === 'true',
   };
@@ -1462,16 +1498,62 @@ async function openStaffHistory(staffId, name) {
 }
 $('#sh-close').addEventListener('click', () => $('#staff-history').style.display = 'none');
 
+// ---------- home stats (editable homepage metric cards) ----------
+const HS_INPUT = 'font-family:var(--font-body);font-size:14px;padding:7px 9px;border:1.5px solid var(--line);border-radius:6px;background:#fff';
+
+async function loadHomeStats() {
+  const stats = await authed('/api/admin/home-stats');
+  $('#homestat-rows').innerHTML = stats.map(s => `
+    <tr data-hs="${s.id}">
+      <td><input data-f="num" value="${esc(s.num)}" style="${HS_INPUT};width:80px"></td>
+      <td><input data-f="suffix" value="${esc(s.suffix)}" style="${HS_INPUT};width:52px"></td>
+      <td><input data-f="label" value="${esc(s.label)}" style="${HS_INPUT};width:220px"></td>
+      <td><input data-f="sort" type="number" value="${s.sort}" style="${HS_INPUT};width:64px"></td>
+      <td style="text-align:center"><input data-f="active" type="checkbox" ${s.active ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--red)"></td>
+      <td><div class="row-actions">
+        <button class="btn btn-sm btn-red" data-hs-save="${s.id}">Save</button>
+        <button class="btn btn-sm btn-ghost" data-hs-del="${s.id}">Delete</button>
+      </div></td>
+    </tr>`).join('')
+    || '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:24px">No stats — add one below.</td></tr>';
+
+  $$('#homestat-rows [data-hs-save]').forEach(b => b.addEventListener('click', async () => {
+    const tr = b.closest('tr');
+    const body = {
+      num: tr.querySelector('[data-f=num]').value,
+      suffix: tr.querySelector('[data-f=suffix]').value,
+      label: tr.querySelector('[data-f=label]').value,
+      sort: +tr.querySelector('[data-f=sort]').value || 0,
+      active: tr.querySelector('[data-f=active]').checked,
+    };
+    const msg = $('#homestat-msg');
+    try {
+      await authed(`/api/admin/home-stats/${b.dataset.hsSave}`, { method: 'PATCH', body });
+      msg.style.color = 'var(--ok)'; msg.textContent = 'Saved ✓';
+      setTimeout(() => msg.textContent = '', 2500);
+    } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+  }));
+  $$('#homestat-rows [data-hs-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete this stat card?')) return;
+    await authed(`/api/admin/home-stats/${b.dataset.hsDel}`, { method: 'DELETE' });
+    loadHomeStats();
+  }));
+}
+$('#homestat-add').addEventListener('click', async () => {
+  await authed('/api/admin/home-stats', { method: 'POST', body: { num: '0', suffix: '', label: 'New Stat', sort: 99 } });
+  loadHomeStats();
+});
+
 // ---------- tabs ----------
 const TAB_LOADERS = {
   inbox: loadInbox, regs: loadRegs, sessions: loadSessions, courses: loadCourses,
   trips: loadTrips, customers: loadCustomers, staff: loadStaff, photos: loadPhotos,
-  sites: loadSites, accounts: loadAccounts, profile: loadProfile,
+  sites: loadSites, homestats: loadHomeStats, accounts: loadAccounts, profile: loadProfile,
 };
 
 const ROLE_TABS = {
-  superadmin: ['inbox', 'regs', 'sessions', 'courses', 'trips', 'customers', 'staff', 'photos', 'sites', 'accounts', 'profile'],
-  admin: ['inbox', 'regs', 'sessions', 'courses', 'trips', 'customers', 'staff', 'photos', 'sites', 'accounts', 'profile'],
+  superadmin: ['inbox', 'regs', 'sessions', 'courses', 'trips', 'customers', 'staff', 'photos', 'sites', 'homestats', 'accounts', 'profile'],
+  admin: ['inbox', 'regs', 'sessions', 'courses', 'trips', 'customers', 'staff', 'photos', 'sites', 'homestats', 'accounts', 'profile'],
   staff: ['inbox', 'regs', 'sessions', 'customers', 'profile'],
   instructor: ['inbox', 'sessions', 'customers', 'profile'],
 };

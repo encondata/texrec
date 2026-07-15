@@ -49,7 +49,7 @@
         <div class="dates">${fmtRange(t.start_date.slice(0,10), t.end_date.slice(0,10))}</div>
         <p class="blurb" style="margin-top:12px">${t.description}</p>
         <div class="foot">
-          <span class="price">${money(t.price_cents)} <small>/ diver</small></span>
+          <span class="price">${priceLabel(t.price_cents, t.call_for_price)}${t.call_for_price ? '' : ' <small>/ diver</small>'}</span>
           <span class="spots ${cls}">${left === 0 ? 'Sold out' : `${left} spots left`}</span>
         </div>
       </div>

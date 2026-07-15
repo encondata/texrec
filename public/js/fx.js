@@ -2,6 +2,32 @@
 // Degrades gracefully: every effect checks for its library and for reduced-motion.
 (() => {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // stat count-up — re-runnable so dynamically-injected stats animate too.
+  // Handles "5,000" (commas) and skips non-numeric values gracefully.
+  window.animateCounts = function (root) {
+    const scope = (root && root.querySelectorAll) ? root : document;
+    let usedGsap = false;
+    scope.querySelectorAll('[data-count]:not([data-counted])').forEach(el => {
+      el.dataset.counted = '1';
+      const end = parseFloat(String(el.dataset.count).replace(/,/g, ''));
+      const suffix = el.dataset.suffix || '';
+      if (!isFinite(end)) return;
+      const show = v => { el.textContent = Math.round(v).toLocaleString('en-US') + suffix; };
+      if (reduced || !window.gsap || !window.ScrollTrigger) { show(end); return; }
+      usedGsap = true;
+      const obj = { v: 0 };
+      gsap.to(obj, {
+        v: end, duration: 1.8, ease: 'power2.out',
+        scrollTrigger: { trigger: el, start: 'top 90%', once: true },
+        onUpdate: () => show(obj.v),
+      });
+    });
+    // recalc positions so triggers on freshly-injected elements fire correctly
+    if (usedGsap) ScrollTrigger.refresh();
+  };
+  window.animateCounts();   // static [data-count] present at load (e.g. About page)
+
   if (reduced) return;
 
   // ---------------- three.js: rising bubbles in hero panels ----------------
@@ -93,18 +119,6 @@
   if (window.gsap && window.ScrollTrigger) {
     gsap.registerPlugin(ScrollTrigger);
     document.body.classList.add('has-gsap');
-
-    // stat count-up
-    $$('[data-count]').forEach(el => {
-      const end = +el.dataset.count;
-      const suffix = el.dataset.suffix || '';
-      const obj = { v: 0 };
-      gsap.to(obj, {
-        v: end, duration: 1.8, ease: 'power2.out',
-        scrollTrigger: { trigger: el, start: 'top 88%', once: true },
-        onUpdate: () => { el.textContent = Math.round(obj.v).toLocaleString('en-US') + suffix; },
-      });
-    });
 
     // gentle parallax on hero copy and decorative art panels
     $$('.hero .inner, .page-hero .wrap').forEach(el => {

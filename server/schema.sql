@@ -27,6 +27,7 @@ CREATE TABLE courses (
   prerequisites TEXT,
   duration      TEXT NOT NULL,              -- human readable, e.g. "3 weekends"
   price_cents   INTEGER NOT NULL,
+  call_for_price BOOLEAN NOT NULL DEFAULT FALSE,
   active        BOOLEAN NOT NULL DEFAULT TRUE,
   -- natural progression: the course that comes before this one; display order
   -- is derived by walking this chain (depth first, then sort as tiebreaker)
@@ -41,6 +42,7 @@ CREATE TABLE trips (
   start_date    DATE NOT NULL,
   end_date      DATE NOT NULL,
   price_cents   INTEGER NOT NULL,
+  call_for_price BOOLEAN NOT NULL DEFAULT FALSE,
   spots_total   INTEGER NOT NULL,
   spots_taken   INTEGER NOT NULL DEFAULT 0,
   description   TEXT NOT NULL,
@@ -62,6 +64,7 @@ CREATE TABLE staff (
 CREATE TABLE class_sessions (
   id            SERIAL PRIMARY KEY,
   course_id     INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  title       TEXT,                         -- optional custom class name (falls back to course name)
   start_date  DATE NOT NULL,
   end_date    DATE NOT NULL,
   start_time  TIME NOT NULL DEFAULT '09:00',
@@ -154,6 +157,21 @@ CREATE TABLE dive_sites (
   sort     INTEGER NOT NULL DEFAULT 0,
   active   BOOLEAN NOT NULL DEFAULT TRUE
 );
+
+-- editable homepage metric cards (Divers Certified, Years in DFW, …)
+CREATE TABLE home_stats (
+  id     SERIAL PRIMARY KEY,
+  num    TEXT NOT NULL,               -- the number, e.g. "5,000" or "6"
+  suffix TEXT NOT NULL DEFAULT '',    -- e.g. "+" or "%"
+  label  TEXT NOT NULL,
+  sort   INTEGER NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+INSERT INTO home_stats (num, suffix, label, sort) VALUES
+  ('5,000', '+', 'Divers Certified', 10),
+  ('17', '', 'Years in DFW', 20),
+  ('6', '', 'Students Max per Class', 30),
+  ('12', '+', 'Trips per Year', 40);
 
 CREATE TABLE photos (
   id            SERIAL PRIMARY KEY,

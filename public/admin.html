@@ -58,6 +58,7 @@
     <button data-tab="staff">Staff</button>
     <button data-tab="photos">Photos</button>
     <button data-tab="sites">Sites</button>
+    <button data-tab="homestats">Homepage</button>
     <button data-tab="accounts">Accounts</button>
     <button data-tab="profile">My Profile</button>
   </div>
@@ -105,11 +106,18 @@
         <input type="hidden" name="id">
         <div class="field-row">
           <div class="field"><label>Course</label><select name="course_id" id="s-course" required></select></div>
-          <div class="field"><label>Location</label><input name="location" required value="TexRec Indoor Pool — Carrollton, TX"></div>
+          <div class="field"><label>Class name <span style="font-weight:400;text-transform:none">(optional — overrides the course name)</span></label>
+            <input name="title" placeholder="e.g. Open Water — August Group"></div>
         </div>
+        <div class="field"><label>Location <span style="font-weight:400;text-transform:none">(type to search sites, or enter your own)</span></label>
+          <input name="location" list="s-locations" required placeholder="Start typing a site name…">
+          <datalist id="s-locations"></datalist></div>
+        <label style="display:flex;align-items:center;gap:8px;margin:2px 0 12px;font-size:14px;color:var(--ink-soft);cursor:pointer">
+          <input type="checkbox" id="s-singleday" style="width:15px;height:15px;accent-color:var(--red)"> Single-day class
+        </label>
         <div class="field-row">
           <div class="field"><label>Start date</label><input name="start_date" type="date" required></div>
-          <div class="field"><label>End date</label><input name="end_date" type="date"></div>
+          <div class="field" id="s-enddate-field"><label>End date</label><input name="end_date" type="date"></div>
         </div>
         <div class="field-row">
           <div class="field"><label>Start time</label><input name="start_time" type="time" value="09:00"></div>
@@ -136,7 +144,27 @@
         <h3 id="sd-title"></h3>
         <button class="btn btn-sm btn-ghost" id="sd-close">Close</button>
       </div>
-      <h4 style="margin:18px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Roster</h4>
+
+      <!-- crew management (staff/admin only) -->
+      <div class="staff-only" id="sd-crew-section">
+        <h4 style="margin:18px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Crew</h4>
+        <div id="sd-crew" class="crew-chips" style="margin-bottom:12px"></div>
+        <form id="crew-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="margin:0;min-width:200px"><label>Staff member</label>
+            <select name="staff_id" id="crew-staff" required></select></div>
+          <div class="field" style="margin:0;min-width:180px"><label>Role</label>
+            <select name="role" id="crew-role">
+              <option value="instructor">Instructor</option>
+              <option value="divemaster">Divemaster</option>
+              <option value="instructor_trainee">Instructor-in-Training</option>
+              <option value="divemaster_trainee">DM-in-Training</option>
+            </select></div>
+          <button class="btn btn-sm btn-red" type="submit">Add to Crew</button>
+          <span id="crew-msg" style="font-weight:600;font-size:13px"></span>
+        </form>
+      </div>
+
+      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Roster</h4>
       <div class="table-scroll"><table class="data"><thead><tr>
         <th>Student</th><th>Contact</th><th>Cert Level</th><th>Status</th><th></th>
       </tr></thead><tbody id="sd-roster"></tbody></table></div>
@@ -182,7 +210,11 @@
         <div class="field"><label>Full description *</label><textarea name="description" rows="3" required></textarea></div>
         <div class="field"><label>Prerequisites (text shown to customers)</label><input name="prerequisites" placeholder="e.g. Open Water Diver, 18+"></div>
         <div class="field-row">
-          <div class="field"><label>Price (USD) *</label><input name="price" type="number" min="1" step="1" required></div>
+          <div class="field"><label>Price (USD)</label>
+            <input name="price" type="number" min="0" step="1" value="0">
+            <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:13.5px;color:var(--ink-soft);cursor:pointer;text-transform:none;font-weight:400">
+              <input type="checkbox" name="call_for_price" style="width:15px;height:15px;accent-color:var(--red)"> Call for Pricing
+            </label></div>
           <div class="field"><label>Comes after <span style="font-weight:400;text-transform:none">(progression order)</span></label>
             <select name="prereq_course_id" id="c-prereq"><option value="">— Start of progression —</option></select></div>
         </div>
@@ -252,7 +284,11 @@ placeholder='[
         </div>
         <div class="field"><label>Description *</label><textarea name="description" rows="3" required></textarea></div>
         <div class="field-row">
-          <div class="field"><label>Price per diver (USD) *</label><input name="price" type="number" min="1" step="1" required></div>
+          <div class="field"><label>Price per diver (USD)</label>
+            <input name="price" type="number" min="0" step="1" value="0">
+            <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:13.5px;color:var(--ink-soft);cursor:pointer;text-transform:none;font-weight:400">
+              <input type="checkbox" name="call_for_price" style="width:15px;height:15px;accent-color:var(--red)"> Call for Pricing
+            </label></div>
           <div class="field"><label>Spots (total / taken)</label>
             <div style="display:flex;gap:8px">
               <input name="spots_total" type="number" min="1" value="12" style="flex:1">
@@ -532,6 +568,21 @@ placeholder='[
         <tbody id="site-rows"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- homepage stats tab -->
+  <div id="tab-homestats" style="display:none">
+    <p style="color:var(--ink-soft);margin-bottom:16px">The metric cards in the homepage stats band. Enter the number and an optional suffix like <strong>+</strong> or <strong>%</strong>. Numbers animate (count up) on the homepage.</p>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr>
+          <th>Number</th><th>Suffix</th><th>Label</th><th>Sort</th><th>Visible</th><th></th>
+        </tr></thead>
+        <tbody id="homestat-rows"></tbody>
+      </table>
+    </div>
+    <button class="btn btn-sm btn-red" id="homestat-add" style="margin-top:14px">+ Add Stat</button>
+    <span id="homestat-msg" style="margin-left:12px;font-weight:600"></span>
   </div>
 
   <!-- accounts tab -->

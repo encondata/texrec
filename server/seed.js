@@ -58,7 +58,7 @@ const TRIPS = [
 ];
 
 const SITES = [
-  ['TexRec HQ & Indoor Pool', 'Carrollton, TX', 'Our home base: heated indoor training pool, classroom, and full retail counter. Every confined-water session happens here — 92°F water, 12-foot deep end, zero algae.', 'https://texrec.com', 'Gear Rental, Air Fills, Nitrox Fills, Retail Shop, Classroom', 32.9537, -96.8903, 10],
+  ['TexRec HQ & Indoor Pool', 'Burleson, TX', 'Our home base: heated indoor training pool, classroom, and full retail counter. Every confined-water session happens here — 92°F water, 12-foot deep end, zero algae.', 'https://texrec.com', 'Gear Rental, Air Fills, Nitrox Fills, Retail Shop, Classroom', 32.9537, -96.8903, 10],
   ['Clear Springs Scuba Park', 'Terrell, TX', 'Our go-to checkout dive site, 40 minutes east of Dallas. Spring-fed quarry with training platforms, sunken boats and a school bus, and vis that regularly hits 20+ feet.', 'https://www.csscuba.com', 'Air Fills, Gear Rental, Training Platforms, Camping, Picnic Areas', 32.7357, -96.2153, 20],
   ['Athens Scuba Park', 'Athens, TX', 'A Texas classic — 20+ sunken attractions including planes and a fire truck. We run Rescue weekends and fun dives here all season.', 'https://www.athensscubapark.com', 'Air Fills, Nitrox Fills, Gear Rental, Training Platforms, Snack Bar', 32.2124, -95.8330, 30],
   ['Blue Lagoon', 'Huntsville, TX', 'Two spring-fed quarries with white limestone bottoms and the clearest water in East Texas. Perfect first post-cert trip; we camp on site most summer weekends.', 'https://www.bluelagoonscuba.net', 'Air Fills, Camping, Kayak Rental', 30.8163, -95.4359, 40],
@@ -76,8 +76,8 @@ const PHOTOS = [
 
 // Sessions: [courseSlug, startOffsetDays, lengthDays, startTime, location, capacity, notes]
 const LOCATIONS = {
-  shop: 'TexRec HQ — Carrollton, TX',
-  pool: 'TexRec Indoor Pool — Carrollton, TX',
+  shop: 'TexRec HQ — Burleson, TX',
+  pool: 'TexRec Indoor Pool — Burleson, TX',
   clear: 'Clear Springs Scuba Park — Terrell, TX',
   athens: 'Athens Scuba Park — Athens, TX',
 };

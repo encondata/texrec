@@ -100,12 +100,7 @@
 
 <section class="block alt">
   <div class="wrap">
-    <div class="stat-band reveal">
-      <div class="stat"><div class="num" data-count="5000" data-suffix="+">0</div><div class="lbl">Divers Certified</div></div>
-      <div class="stat"><div class="num" data-count="17">0</div><div class="lbl">Years in DFW</div></div>
-      <div class="stat"><div class="num" data-count="6">0</div><div class="lbl">Students Max per Class</div></div>
-      <div class="stat"><div class="num" data-count="12" data-suffix="+">0</div><div class="lbl">Trips per Year</div></div>
-    </div>
+    <div class="stat-band reveal" id="stat-band"></div>
   </div>
 </section>
 
@@ -141,7 +136,7 @@
           <div class="meta"><span class="chip red">${c.level}</span>${c.duration ? `<span class="chip">${c.duration}</span>` : ''}</div>
           <p class="blurb">${c.blurb}</p>
           <div class="foot">
-            <span class="price">${priceLabel(c.price_cents)}</span>
+            <span class="price">${priceLabel(c.price_cents, c.call_for_price)}</span>
             <a class="btn btn-sm btn-ghost" href="/courses#${c.slug}">Details</a>
           </div>
         </div>
@@ -157,13 +152,44 @@
           <span class="day">${new Date(s.start_date + 'T12:00:00').getDate()}</span>
         </div>
         <div>
-          <h3>${s.course_name}</h3>
+          <h3>${s.title || s.course_name}</h3>
           <div class="det">${fmtRange(s.start_date, s.end_date)} · ${s.start_time} · ${s.location}</div>
           <div class="seats">${left > 0 ? `${left} seat${left === 1 ? '' : 's'} left` : 'Full — waitlist open'}</div>
         </div>
         <div class="act"><a class="btn btn-sm btn-red" href="/calendar?session=${s.id}">Register</a></div>
       </div>`;
     }).join('');
+
+    // editable homepage metric cards, with a self-contained count-up
+    const stats = await api('/api/home-stats');
+    $('#stat-band').innerHTML = stats.map(st => {
+      const raw = String(st.num).trim();
+      const numeric = /^[\d,]+$/.test(raw);
+      const numAttr = numeric ? `data-count="${raw.replace(/,/g, '')}" data-suffix="${esc(st.suffix || '')}"` : '';
+      const shown = numeric ? '0' : esc(raw + (st.suffix || ''));
+      return `<div class="stat"><div class="num" ${numAttr}>${shown}</div><div class="lbl">${esc(st.label)}</div></div>`;
+    }).join('');
+
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const countUp = el => {
+      const target = parseFloat(el.dataset.count), suffix = el.dataset.suffix || '';
+      if (!isFinite(target)) return;
+      if (reduceMotion) { el.textContent = target.toLocaleString('en-US') + suffix; return; }
+      const t0 = performance.now(), dur = 1600;
+      const step = now => {
+        const p = Math.min(1, (now - t0) / dur);
+        el.textContent = Math.round((1 - Math.pow(1 - p, 3)) * target).toLocaleString('en-US') + suffix;
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    };
+    new IntersectionObserver((entries, obs) => {
+      for (const e of entries) if (e.isIntersecting) {
+        $$('.num[data-count]', $('#stat-band')).forEach(countUp);
+        obs.disconnect();
+      }
+    }, { threshold: 0.35 }).observe($('#stat-band'));
+
     initReveal();
   })();
 </script>

@@ -206,9 +206,9 @@ app.get('/api/sessions', wrap(async (req, res) => {
   const from = req.query.from || new Date().toISOString().slice(0, 10);
   const to = req.query.to || null;
   const { rows } = await pool.query(
-    `SELECT s.id, s.start_date, s.end_date, to_char(s.start_time,'HH12:MI AM') AS start_time,
+    `SELECT s.id, s.title, s.start_date, s.end_date, to_char(s.start_time,'HH12:MI AM') AS start_time,
             s.location, s.capacity, s.status, s.notes,
-            c.name AS course_name, c.slug AS course_slug, c.level, c.price_cents, c.duration, c.blurb,
+            c.name AS course_name, c.slug AS course_slug, c.level, c.price_cents, c.call_for_price, c.duration, c.blurb,
             ${SESSION_STAFF_SQL},
             (SELECT count(*)::int FROM registrations r
               WHERE r.session_id = s.id AND r.status IN ('pending','confirmed')) AS registered
@@ -294,6 +294,12 @@ app.get('/api/photos', wrap(async (req, res) => {
   res.json(rows);
 }));
 
+app.get('/api/home-stats', wrap(async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT id,num,suffix,label FROM home_stats WHERE active ORDER BY sort, id');
+  res.json(rows);
+}));
+
 // ---------- admin API ----------
 app.post('/api/admin/login', wrap(async (req, res) => {
   const { email, password } = req.body || {};
@@ -353,20 +359,20 @@ app.get('/api/admin/sessions', requireAdmin, wrap(async (req, res) => {
 }));
 
 app.post('/api/admin/sessions', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
-  const { course_id, start_date, end_date, start_time, location, capacity, notes } = req.body || {};
+  const { course_id, title, start_date, end_date, start_time, location, capacity, notes } = req.body || {};
   if (!course_id || !start_date || !location) {
     return res.status(400).json({ error: 'course_id, start_date, and location are required.' });
   }
   const { rows: [s] } = await pool.query(
-    `INSERT INTO class_sessions (course_id,start_date,end_date,start_time,location,capacity,notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [course_id, start_date, end_date || start_date, start_time || '09:00',
+    `INSERT INTO class_sessions (course_id,title,start_date,end_date,start_time,location,capacity,notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [course_id, title?.trim() || null, start_date, end_date || start_date, start_time || '09:00',
      location, capacity || 8, notes || null]);
   res.status(201).json(s);
 }));
 
 app.patch('/api/admin/sessions/:id', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
-  const allowed = ['start_date', 'end_date', 'start_time', 'location', 'capacity', 'status', 'notes'];
+  const allowed = ['title', 'start_date', 'end_date', 'start_time', 'location', 'capacity', 'status', 'notes'];
   const sets = [], vals = [];
   for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k] === '' ? null : req.body[k]); sets.push(`${k}=$${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
@@ -442,6 +448,42 @@ app.delete('/api/admin/sessions/:id', requireAdmin, allow('admin', 'staff'), wra
   res.json({ ok: true, forced: !!force });
 }));
 
+// ---------- admin: home stats (editable homepage metric cards) ----------
+app.get('/api/admin/home-stats', requireAdmin, allow('admin'), wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM home_stats ORDER BY sort, id');
+  res.json(rows);
+}));
+
+app.post('/api/admin/home-stats', requireAdmin, allow('admin'), wrap(async (req, res) => {
+  const { num, suffix, label, sort, active } = req.body || {};
+  if (!String(num ?? '').trim() || !label?.trim()) {
+    return res.status(400).json({ error: 'num and label are required.' });
+  }
+  const { rows: [s] } = await pool.query(
+    `INSERT INTO home_stats (num,suffix,label,sort,active) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [String(num).trim(), (suffix || '').trim(), label.trim(),
+     sort ?? 99, active ?? true]);
+  res.status(201).json(s);
+}));
+
+app.patch('/api/admin/home-stats/:id', requireAdmin, allow('admin'), wrap(async (req, res) => {
+  const allowed = ['num', 'suffix', 'label', 'sort', 'active'];
+  const sets = [], vals = [];
+  for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k]); sets.push(`${k}=$${vals.length}`); }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
+  vals.push(req.params.id);
+  const { rows: [s] } = await pool.query(
+    `UPDATE home_stats SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`, vals);
+  if (!s) return res.status(404).json({ error: 'Stat not found.' });
+  res.json(s);
+}));
+
+app.delete('/api/admin/home-stats/:id', requireAdmin, allow('admin'), wrap(async (req, res) => {
+  const { rowCount } = await pool.query('DELETE FROM home_stats WHERE id=$1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: 'Stat not found.' });
+  res.json({ ok: true });
+}));
+
 // ---------- admin: trips ----------
 app.get('/api/admin/trips', requireAdmin, allow('admin'), wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM trips ORDER BY start_date DESC');
@@ -449,20 +491,20 @@ app.get('/api/admin/trips', requireAdmin, allow('admin'), wrap(async (req, res) 
 }));
 
 app.post('/api/admin/trips', requireAdmin, allow('admin'), wrap(async (req, res) => {
-  const { title, destination, start_date, end_date, price_cents, spots_total, spots_taken, description, active } = req.body || {};
-  if (!title?.trim() || !destination?.trim() || !start_date || !end_date || !(price_cents > 0) || !(spots_total > 0) || !description?.trim()) {
+  const { title, destination, start_date, end_date, price_cents, call_for_price, spots_total, spots_taken, description, active } = req.body || {};
+  if (!title?.trim() || !destination?.trim() || !start_date || !end_date || !(price_cents >= 0) || !(spots_total > 0) || !description?.trim()) {
     return res.status(400).json({ error: 'title, destination, dates, price, spots, and description are required.' });
   }
   const { rows: [t] } = await pool.query(
-    `INSERT INTO trips (title,destination,start_date,end_date,price_cents,spots_total,spots_taken,description,active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [title.trim(), destination.trim(), start_date, end_date, price_cents,
+    `INSERT INTO trips (title,destination,start_date,end_date,price_cents,call_for_price,spots_total,spots_taken,description,active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [title.trim(), destination.trim(), start_date, end_date, price_cents, !!call_for_price,
      spots_total, spots_taken ?? 0, description.trim(), active ?? true]);
   res.status(201).json(t);
 }));
 
 app.patch('/api/admin/trips/:id', requireAdmin, allow('admin'), wrap(async (req, res) => {
-  const allowed = ['title', 'destination', 'start_date', 'end_date', 'price_cents', 'spots_total', 'spots_taken', 'description', 'active'];
+  const allowed = ['title', 'destination', 'start_date', 'end_date', 'price_cents', 'call_for_price', 'spots_total', 'spots_taken', 'description', 'active'];
   const sets = [], vals = [];
   for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k] === '' ? null : req.body[k]); sets.push(`${k}=$${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
@@ -758,9 +800,9 @@ app.get('/api/admin/courses', requireAdmin, allow('admin'), wrap(async (req, res
 
 async function insertCourse(entry) {
   const { name, level, agency, blurb, description, prerequisites, duration,
-          comes_after, sort, active } = entry || {};
+          comes_after, call_for_price, sort, active } = entry || {};
   // duration and price are optional — a course can be listed before pricing is set
-  // (price_cents = 0 → shown as "Contact us"; empty duration → chip hidden)
+  // (call_for_price → "Call for Pricing"; price 0 → "Free"; empty duration → chip hidden)
   const price_cents = entry?.price_cents ?? (entry?.price != null ? Math.round(+entry.price * 100) : 0);
   if (!name?.trim() || !level?.trim() || !blurb?.trim() || !description?.trim()) {
     throw new Error('name, level, blurb, and description are required.');
@@ -777,10 +819,10 @@ async function insertCourse(entry) {
   const { rows: [dupe] } = await pool.query('SELECT 1 FROM courses WHERE slug=$1', [slug]);
   if (dupe) throw new Error('A course with that name already exists.');
   const { rows: [c] } = await pool.query(
-    `INSERT INTO courses (slug,name,level,agency,blurb,description,prerequisites,duration,price_cents,prereq_course_id,sort,active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    `INSERT INTO courses (slug,name,level,agency,blurb,description,prerequisites,duration,price_cents,call_for_price,prereq_course_id,sort,active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [slug, name.trim(), level.trim(), agency?.trim() || 'SDI', blurb.trim(), description.trim(),
-     prerequisites?.trim() || null, duration?.trim() || '', price_cents, prereqId,
+     prerequisites?.trim() || null, duration?.trim() || '', price_cents, !!call_for_price, prereqId,
      await resolveSort('courses', sort), active ?? true]);
   return c;
 }
@@ -809,7 +851,7 @@ app.patch('/api/admin/courses/:id', requireAdmin, allow('admin'), wrap(async (re
     return res.status(400).json({ error: 'A course cannot come after itself.' });
   }
   const allowed = ['name', 'level', 'agency', 'blurb', 'description', 'prerequisites',
-                   'duration', 'price_cents', 'prereq_course_id', 'sort', 'active'];
+                   'duration', 'price_cents', 'call_for_price', 'prereq_course_id', 'sort', 'active'];
   const sets = [], vals = [];
   for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k] === '' ? null : req.body[k]); sets.push(`${k}=$${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });

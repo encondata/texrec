@@ -30,8 +30,12 @@ const hasCoords = (lat, lng) =>
 const money = cents => '$' + (cents / 100).toLocaleString('en-US', {
   minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-// course price for display: 0 / unset means pricing isn't published yet
-const priceLabel = cents => (cents && cents > 0) ? money(cents) : 'Contact us';
+// price for display: "Call for Pricing" when flagged, "Free" for a real $0,
+// otherwise the dollar amount
+const priceLabel = (cents, callForPrice) =>
+  callForPrice ? 'Call for Pricing'
+    : (cents && cents > 0) ? money(cents)
+    : 'Free';
 
 const fmtDate = (iso, opts = { month: 'short', day: 'numeric' }) =>
   new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-US', opts);
@@ -121,7 +125,7 @@ function renderChrome() {
         <li><a href="/admin">Staff Portal</a></li>
       </ul></div>
       <div><h4>Find Us</h4><ul>
-        <li>2400 Marsh Ln, Ste 120<br>Carrollton, TX 75006</li>
+        <li>2400 Marsh Ln, Ste 120<br>Burleson, TX 76028</li>
         <li><a href="tel:+19725550163">(972) 555-0163</a></li>
         <li><a href="mailto:dive@texrec.com">dive@texrec.com</a></li>
       </ul></div>
