@@ -95,6 +95,11 @@ async function enterDash() {
           <span class="status-pill ${r.status}">${r.status}</span>
           <span style="font-weight:400;color:var(--ink-soft);margin-left:8px">${STATUS_BLURB[r.status] || ''}</span>
         </div>
+        ${r.status !== 'cancelled' ? (() => {
+          const v = regValidation(r, me.customer);
+          return `<div class="seats" style="margin-top:6px"><span class="form-flag ${v.color}">${
+            v.key === 'validated' ? 'Validated registration ✓' : v.label}</span></div>`;
+        })() : ''}
       </div>
       <div></div>
     </div>`).join('')

@@ -109,7 +109,9 @@ async function requireCustomer(req, res, next) {
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   const { rows } = await pool.query(
-    `SELECT c.id, c.email, c.first_name, c.last_name, c.phone FROM customer_tokens t
+    `SELECT c.id, c.email, c.first_name, c.last_name, c.phone,
+            c.medical_date, c.medical_waiver_required, c.waiver_date
+     FROM customer_tokens t
      JOIN customers c ON c.id = t.customer_id
      WHERE t.token = $1 AND t.expires_at > now()`, [token]);
   if (!rows.length) return res.status(401).json({ error: 'Session expired' });
@@ -324,11 +326,13 @@ app.get('/api/admin/registrations', requireAdmin, allow('admin','staff'), wrap(a
   const status = req.query.status || null;
   const { rows } = await pool.query(
     `SELECT r.*, s.start_date, s.location, s.capacity, c.name AS course_name,
+            cust.medical_date, cust.medical_waiver_required, cust.waiver_date,
             (SELECT count(*)::int FROM registrations r2
               WHERE r2.session_id = s.id AND r2.status IN ('pending','confirmed')) AS session_registered
      FROM registrations r
      JOIN class_sessions s ON s.id = r.session_id
      JOIN courses c ON c.id = s.course_id
+     LEFT JOIN customers cust ON cust.id = r.customer_id
      WHERE ($1::text IS NULL OR r.status = $1)
      ORDER BY (r.status='pending') DESC, s.start_date, r.created_at`, [status]);
   res.json(rows);
@@ -343,6 +347,26 @@ app.patch('/api/admin/registrations/:id', requireAdmin, allow('admin','staff'), 
     'UPDATE registrations SET status=$1 WHERE id=$2 RETURNING *', [status, req.params.id]);
   if (!reg) return res.status(404).json({ error: 'Registration not found.' });
   res.json(reg);
+}));
+
+// verification checklist for a single registration (paid / coursework / welcome packet)
+app.patch('/api/admin/registrations/:id/checklist', requireAdmin, wrap(async (req, res) => {
+  const { rows: [reg] } = await pool.query('SELECT id, session_id FROM registrations WHERE id=$1', [req.params.id]);
+  if (!reg) return res.status(404).json({ error: 'Registration not found.' });
+  if (req.admin.role === 'instructor') {
+    const ids = await instructorSessionIds(req.admin);
+    if (!ids.includes(reg.session_id)) return res.status(403).json({ error: 'That class is not one of yours.' });
+  }
+  const sets = [], vals = [];
+  for (const k of ['paid', 'coursework_complete', 'welcome_packet_sent']) {
+    if (typeof req.body?.[k] === 'boolean') { vals.push(req.body[k]); sets.push(`${k}=$${vals.length}`); }
+  }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
+  vals.push(req.params.id);
+  const { rows: [updated] } = await pool.query(
+    `UPDATE registrations SET ${sets.join(',')} WHERE id=$${vals.length}
+     RETURNING id, paid, coursework_complete, welcome_packet_sent`, vals);
+  res.json(updated);
 }));
 
 app.get('/api/admin/sessions', requireAdmin, wrap(async (req, res) => {
@@ -955,6 +979,7 @@ app.get('/api/admin/customers', requireAdmin, wrap(async (req, res) => {
     `SELECT c.id, c.email, c.first_name, c.last_name, c.phone,
             c.password_hash IS NOT NULL AS has_account,
             c.avatar_filename IS NOT NULL AS has_avatar, c.created_at,
+            c.medical_date, c.medical_waiver_required, c.waiver_date,
             (SELECT count(*)::int FROM registrations r WHERE r.customer_id = c.id) AS registration_count,
             (SELECT count(*)::int FROM customer_notes n WHERE n.customer_id = c.id AND n.kind='certification') AS cert_count
      FROM customers c
@@ -982,11 +1007,13 @@ app.get('/api/admin/customers/:id', requireAdmin, wrap(async (req, res) => {
   const { rows: [customer] } = await pool.query(
     `SELECT id, email, first_name, last_name, phone,
             password_hash IS NOT NULL AS has_account,
-            avatar_filename IS NOT NULL AS has_avatar, share_contact, created_at
+            avatar_filename IS NOT NULL AS has_avatar, share_contact, created_at,
+            medical_date, medical_waiver_required, waiver_date
      FROM customers WHERE id=$1`, [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Customer not found.' });
   const { rows: registrations } = await pool.query(
-    `SELECT r.id, r.status, r.created_at, s.id AS session_id, s.start_date, s.end_date, s.location,
+    `SELECT r.id, r.status, r.created_at, r.paid, r.coursework_complete, r.welcome_packet_sent,
+            s.id AS session_id, s.start_date, s.end_date, s.location,
             c.name AS course_name
      FROM registrations r JOIN class_sessions s ON s.id = r.session_id
      JOIN courses c ON c.id = s.course_id
@@ -1017,6 +1044,28 @@ app.patch('/api/admin/customers/:id', requireAdmin, wrap(async (req, res) => {
   const { rows: [c] } = await pool.query(
     'UPDATE customers SET share_contact=$1 WHERE id=$2 RETURNING id, share_contact',
     [req.body.share_contact, req.params.id]);
+  if (!c) return res.status(404).json({ error: 'Customer not found.' });
+  res.json(c);
+}));
+
+// staff verify a customer's medical / waiver standing (the on-file dates)
+app.patch('/api/admin/customers/:id/medical', requireAdmin, wrap(async (req, res) => {
+  if (!await canTouchCustomer(req.admin, req.params.id)) {
+    return res.status(403).json({ error: 'This customer is not in any of your classes.' });
+  }
+  const b = req.body || {};
+  const isDate = v => v == null || v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!isDate(b.medical_date) || !isDate(b.waiver_date)) {
+    return res.status(400).json({ error: 'Dates must be YYYY-MM-DD.' });
+  }
+  const { rows: [c] } = await pool.query(
+    `UPDATE customers SET
+       medical_date = $1,
+       medical_waiver_required = $2,
+       waiver_date = $3
+     WHERE id=$4
+     RETURNING id, medical_date, medical_waiver_required, waiver_date`,
+    [b.medical_date || null, !!b.medical_waiver_required, b.waiver_date || null, req.params.id]);
   if (!c) return res.status(404).json({ error: 'Customer not found.' });
   res.json(c);
 }));
@@ -1305,7 +1354,7 @@ app.patch('/api/customer/me', requireCustomer, wrap(async (req, res) => {
 
 app.get('/api/customer/me', requireCustomer, wrap(async (req, res) => {
   const { rows: registrations } = await pool.query(
-    `SELECT r.id, r.status, r.created_at,
+    `SELECT r.id, r.status, r.created_at, r.paid, r.coursework_complete, r.welcome_packet_sent,
             s.id AS session_id, s.start_date, s.end_date,
             to_char(s.start_time,'HH12:MI AM') AS start_time, s.location,
             c.name AS course_name, ${SESSION_STAFF_SQL},

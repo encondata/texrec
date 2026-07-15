@@ -99,6 +99,9 @@ CREATE TABLE customers (
   password_hash   TEXT,                    -- NULL until they create portal access
   avatar_filename TEXT,                    -- private file under media/
   share_contact   BOOLEAN NOT NULL DEFAULT FALSE, -- opt-in: show my contact info to classmates
+  medical_date    DATE,                    -- medical questionnaire verified on file (valid 1 yr); NULL = not on file
+  medical_waiver_required BOOLEAN NOT NULL DEFAULT FALSE, -- answered YES → physician waiver needed
+  waiver_date     DATE,                    -- physician medical waiver received on file (valid 1 yr)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -120,6 +123,9 @@ CREATE TABLE registrations (
   cert_level  TEXT,                          -- current certification, if any
   notes       TEXT,
   status      TEXT NOT NULL DEFAULT 'pending', -- pending | confirmed | cancelled | waitlist
+  paid                BOOLEAN NOT NULL DEFAULT FALSE, -- verification checklist ↓
+  coursework_complete BOOLEAN NOT NULL DEFAULT FALSE,
+  welcome_packet_sent BOOLEAN NOT NULL DEFAULT FALSE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT valid_reg_status CHECK (status IN ('pending','confirmed','cancelled','waitlist'))
 );

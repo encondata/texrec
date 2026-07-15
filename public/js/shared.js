@@ -37,6 +37,54 @@ const priceLabel = (cents, callForPrice) =>
     : (cents && cents > 0) ? money(cents)
     : 'Free';
 
+// ---------- medical / forms + registration validation (shared: admin + account) ----------
+// a date "on file" counts as current for one year from that date
+function withinYear(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(String(dateStr).slice(0, 10) + 'T12:00:00');
+  if (isNaN(d)) return false;
+  return (Date.now() - d.getTime()) < 365 * 86400000;
+}
+
+// medical standing for the Forms icon. green = cleared, yellow = waiver outstanding,
+// red = missing/expired. Waiver-required divers are cleared by a current waiver.
+function medicalStatus(c) {
+  if (c.medical_waiver_required) {
+    return withinYear(c.waiver_date)
+      ? { key: 'ok', color: 'green', badge: 'Waiver on file', icon: '⚕',
+          tip: `Physician medical waiver on file (${String(c.waiver_date).slice(0, 10)})` }
+      : { key: 'waiver', color: 'yellow', badge: 'Waiver required', icon: '⚕',
+          tip: 'Physician medical waiver required — not yet on file' };
+  }
+  if (withinYear(c.medical_date)) {
+    return { key: 'ok', color: 'green', badge: 'On file', icon: '⚕',
+      tip: `Medical verified ${String(c.medical_date).slice(0, 10)}` };
+  }
+  if (c.medical_date) {
+    return { key: 'expired', color: 'red', badge: 'Expired', icon: '⚕',
+      tip: `Medical on file but over a year old (${String(c.medical_date).slice(0, 10)})` };
+  }
+  return { key: 'none', color: 'red', badge: 'None', icon: '⚕', tip: 'No medical on file' };
+}
+const medicalCleared = c => medicalStatus(c).key === 'ok';
+
+// a colored medical badge; compact = icon + short badge, else icon + full label
+function medicalFlag(c, compact = false) {
+  const s = medicalStatus(c);
+  return `<span class="form-flag ${s.color}" title="${esc(s.tip)}">${s.icon} ${esc(compact ? s.badge : 'Medical: ' + s.badge)}</span>`;
+}
+
+// per-registration validation: needs paid + medical + welcome packet + coursework.
+// Missing a document → "Pending documents"; only coursework left → "Pending coursework".
+function regValidation(r, cust) {
+  const medOk = medicalCleared(cust);
+  if (r.paid && medOk && r.welcome_packet_sent && r.coursework_complete)
+    return { key: 'validated', label: 'Validated', color: 'green' };
+  if (!r.paid || !medOk || !r.welcome_packet_sent)
+    return { key: 'pending_docs', label: 'Pending documents', color: 'red' };
+  return { key: 'pending_coursework', label: 'Pending coursework', color: 'yellow' };
+}
+
 const fmtDate = (iso, opts = { month: 'short', day: 'numeric' }) =>
   new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-US', opts);
 

@@ -57,13 +57,14 @@ async function loadRegs() {
       <td style="font-size:14px"><a href="mailto:${esc(r.email)}">${esc(r.email)}</a><br>${esc(r.phone)}</td>
       <td style="font-size:14px;max-width:180px">${esc(r.notes) || '—'}</td>
       <td><span class="status-pill ${r.status}">${r.status}</span></td>
+      <td><span class="form-flag ${regValidation(r, r).color}" title="Paid, medical, welcome packet & coursework">${regValidation(r, r).label}</span></td>
       <td><div class="row-actions">
         ${r.status !== 'confirmed' ? `<button class="btn btn-sm btn-red" data-act="confirmed" data-id="${r.id}">Confirm</button>` : ''}
         ${r.status !== 'cancelled' ? `<button class="btn btn-sm btn-ghost" data-act="cancelled" data-id="${r.id}">Cancel</button>` : ''}
         ${r.status === 'cancelled' ? `<button class="btn btn-sm btn-ghost" data-act="pending" data-id="${r.id}">Reopen</button>` : ''}
       </div></td>
     </tr>`).join('')
-    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:30px">No registrations here.</td></tr>';
+    : '<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:30px">No registrations here.</td></tr>';
 
   $$('#reg-rows [data-act]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true;
@@ -1291,10 +1292,11 @@ async function loadCustomers() {
       <td style="font-size:14px"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a><br>${esc(c.phone) || ''}</td>
       <td>${c.registration_count}</td>
       <td>${c.cert_count}</td>
+      <td>${medicalFlag(c, true)}</td>
       <td><span class="status-pill ${c.has_account ? 'confirmed' : 'cancelled'}">${c.has_account ? 'account' : 'no account'}</span></td>
       <td><button class="btn btn-sm btn-red" data-cust="${c.id}">Open Record</button></td>
     </tr>`).join('')
-    : '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:30px">No customers found.</td></tr>';
+    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:30px">No customers found.</td></tr>';
   $$('#cust-rows [data-cust]').forEach(b =>
     b.addEventListener('click', () => openCustomerDetail(+b.dataset.cust)));
 }
@@ -1313,11 +1315,14 @@ function avatarHTML(cust, size = 64) {
     : `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${size / 2.6}px;margin:0">${esc(initials)}</div>`;
 }
 
+let curDetail = null;   // last-loaded customer detail, for in-place checklist updates
+
 async function openCustomerDetail(id) {
   detailCustomerId = id;
   let d;
   try { d = await authed(`/api/admin/customers/${id}`); }
   catch (err) { alert(err.message); return; }
+  curDetail = d;
   $('#cust-detail').style.display = '';
   $('#cd-delete').style.display = me?.role === 'admin' ? '' : 'none';
   $('#cd-title').textContent = `${d.customer.first_name} ${d.customer.last_name}`;
@@ -1348,13 +1353,36 @@ async function openCustomerDetail(id) {
     openCustomerDetail(detailCustomerId);
   }));
 
-  $('#cd-regs').innerHTML = d.registrations.length ? d.registrations.map(r => `
-    <tr>
+  // medical & forms controls
+  const cust = d.customer;
+  $('#cd-med-flag').innerHTML = medicalFlag(cust);
+  $('#med-onfile').checked = !!cust.medical_date;
+  $('#med-date').value = cust.medical_date ? cust.medical_date.slice(0, 10) : '';
+  $('#med-waiver-req').checked = !!cust.medical_waiver_required;
+  $('#med-waiver-onfile').checked = !!cust.waiver_date;
+  $('#med-waiver-date').value = cust.waiver_date ? cust.waiver_date.slice(0, 10) : '';
+
+  const canEdit = me?.role !== 'instructor';
+  $('#cd-regs').innerHTML = d.registrations.length ? d.registrations.map(r => {
+    const v = regValidation(r, cust);
+    const box = (field) =>
+      `<input type="checkbox" data-chk="${field}" data-reg="${r.id}" ${r[field] ? 'checked' : ''}
+        ${canEdit ? '' : 'disabled'} style="width:17px;height:17px;accent-color:var(--red);cursor:${canEdit ? 'pointer' : 'default'}">`;
+    return `
+    <tr data-regrow="${r.id}">
       <td>${esc(r.course_name)}</td>
       <td>${fmtRange(r.start_date.slice(0,10), r.end_date.slice(0,10))}</td>
       <td><span class="status-pill ${r.status}">${r.status}</span></td>
-    </tr>`).join('')
-    : '<tr><td colspan="3" style="text-align:center;color:var(--ink-soft);padding:16px">No registrations.</td></tr>';
+      <td style="text-align:center">${box('paid')}</td>
+      <td style="text-align:center">${box('coursework_complete')}</td>
+      <td style="text-align:center">${box('welcome_packet_sent')}</td>
+      <td><span class="form-flag ${medicalStatus(cust).color}">${medicalStatus(cust).icon} ${medicalStatus(cust).badge}</span></td>
+      <td data-valcell="${r.id}"><span class="form-flag ${v.color}">${v.label}</span></td>
+    </tr>`;
+  }).join('')
+    : '<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:16px">No registrations.</td></tr>';
+
+  $$('#cd-regs [data-chk]').forEach(cb => cb.addEventListener('change', onChecklistToggle));
 
   $('#note-session').innerHTML = '<option value="">— None —</option>' +
     d.registrations.map(r =>
@@ -1390,6 +1418,72 @@ function renderCustomerNotes(notes) {
 }
 
 $('#cd-close').addEventListener('click', () => $('#cust-detail').style.display = 'none');
+
+const todayISO = () => {
+  const d = new Date();   // local date, not UTC — avoids an evening off-by-one
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// re-render every derived validation pill (and the medical column) in the detail table
+function refreshValidationCells() {
+  if (!curDetail) return;
+  const s = medicalStatus(curDetail.customer);
+  curDetail.registrations.forEach(r => {
+    const v = regValidation(r, curDetail.customer);
+    const vc = $(`[data-valcell="${r.id}"]`);
+    if (vc) vc.innerHTML = `<span class="form-flag ${v.color}">${v.label}</span>`;
+  });
+  $$('#cd-regs [data-regrow]').forEach(row => {
+    const mcell = row.children[6];
+    if (mcell) mcell.innerHTML = `<span class="form-flag ${s.color}">${s.icon} ${s.badge}</span>`;
+  });
+}
+
+// toggle one registration checklist box; validation pill updates live
+async function onChecklistToggle(e) {
+  const cb = e.target;
+  const regId = +cb.dataset.reg, field = cb.dataset.chk;
+  cb.disabled = true;
+  try {
+    await authed(`/api/admin/registrations/${regId}/checklist`, {
+      method: 'PATCH', body: { [field]: cb.checked } });
+    const r = curDetail?.registrations.find(x => x.id === regId);
+    if (r) { r[field] = cb.checked; refreshValidationCells(); }
+  } catch (err) {
+    cb.checked = !cb.checked;   // revert on failure
+    alert(err.message);
+  } finally {
+    cb.disabled = false;
+  }
+}
+
+// auto-stamp today's date when a box is first ticked
+$('#med-onfile').addEventListener('change', e => {
+  if (e.target.checked && !$('#med-date').value) $('#med-date').value = todayISO();
+});
+$('#med-waiver-onfile').addEventListener('change', e => {
+  if (e.target.checked && !$('#med-waiver-date').value) $('#med-waiver-date').value = todayISO();
+});
+
+$('#med-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('#med-msg');
+  const body = {
+    medical_date: $('#med-onfile').checked ? ($('#med-date').value || todayISO()) : null,
+    medical_waiver_required: $('#med-waiver-req').checked,
+    waiver_date: $('#med-waiver-onfile').checked ? ($('#med-waiver-date').value || todayISO()) : null,
+  };
+  try {
+    const updated = await authed(`/api/admin/customers/${detailCustomerId}/medical`, { method: 'PATCH', body });
+    Object.assign(curDetail.customer, updated);
+    $('#cd-med-flag').innerHTML = medicalFlag(curDetail.customer);
+    refreshValidationCells();
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Saved ✓';
+    setTimeout(() => { msg.textContent = ''; }, 2500);
+  } catch (err) {
+    msg.style.color = 'var(--red)'; msg.textContent = err.message;
+  }
+});
 
 $('#cd-delete').addEventListener('click', async () => {
   const name = $('#cd-title').textContent;
