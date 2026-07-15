@@ -28,6 +28,16 @@ async function main() {
     console.log('bootstrap: empty database — creating schema…');
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     await pool.query(schema);
+    // schema.sql already includes every migration — record them as applied so
+    // migrate.js never re-runs them against this fresh database
+    await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    const migDir = path.join(__dirname, 'migrations');
+    if (fs.existsSync(migDir)) {
+      for (const f of fs.readdirSync(migDir).filter(x => x.endsWith('.sql')).sort()) {
+        await pool.query('INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING', [f]);
+      }
+    }
   } else {
     console.log('bootstrap: schema already present — skipping.');
   }

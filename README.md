@@ -43,13 +43,24 @@ First boot runs `server/bootstrap.js`: creates the schema on an empty database
 and a first admin account from `BOOTSTRAP_ADMIN_*` (only if no admins exist).
 It is idempotent — it never touches an initialized database.
 
-**Updating**: copy/pull the new code onto the server, then
+**Updating**: from the deploy folder, use one of the bundled scripts:
 ```bash
-docker compose up -d --build
+./update.sh        # pull latest code, rebuild & restart (data preserved)
+./update_full.sh   # same, PLUS apply any pending DB migrations
 ```
-The image rebuilds and restarts; the database and all uploaded files live in
-volumes and are untouched. (Schema changes need their `ALTER TABLE`s applied:
-`docker compose exec db psql -U texrec -d texrec`.)
+Both preserve the database and uploaded files (they live in named volumes and
+are never rebuilt). Use `update.sh` for a normal release; use `update_full.sh`
+when a release includes **schema changes** (the commit/changelog will say so).
+The first time, run `git pull` once to fetch the scripts, then `chmod +x
+update*.sh`.
+
+Under the hood `update_full.sh` runs `server/migrate.js`, which applies pending
+`server/migrations/*.sql` files in order and records them in a
+`schema_migrations` table — idempotent, so it's safe to run repeatedly. Fresh
+installs get the full schema from `schema.sql` and mark all migrations as
+already-applied, so they never re-run. (Equivalent manual call:
+`docker compose exec -T app node server/migrate.js`.) See
+`server/migrations/README.md` for how to author a migration.
 
 **Migrating your current local data into the container**:
 ```bash
