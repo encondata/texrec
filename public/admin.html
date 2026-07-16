@@ -52,7 +52,9 @@
     <button data-tab="inbox">Inbox <span class="count" id="inbox-count" style="display:none"></span></button>
     <button data-tab="regs" class="active">Enrollments <span class="count" id="pending-count" style="display:none"></span></button>
     <button data-tab="sessions">Sessions</button>
+    <button data-tab="sessiontypes">Session Types</button>
     <button data-tab="courses">Courses</button>
+    <button data-tab="bundles">Bundles</button>
     <button data-tab="trips">Trips</button>
     <button data-tab="customers">Customers</button>
     <button data-tab="staff">Staff</button>
@@ -648,6 +650,43 @@ placeholder='[
     </div>
     <button class="btn btn-sm btn-red" id="homestat-add" style="margin-top:14px">+ Add Stat</button>
     <span id="homestat-msg" style="margin-left:12px;font-weight:600"></span>
+  </div>
+
+  <!-- session types tab -->
+  <div id="tab-sessiontypes" style="display:none">
+    <p style="color:var(--ink-soft);margin-bottom:16px">The shared vocabulary of session kinds (Pool, Lake Day 1, …). Courses reference these in their recipe, and every session is one of these types. Sort controls the order they appear.</p>
+    <form id="stype-add-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px">
+      <div class="field" style="margin:0;min-width:220px"><label>New session type</label>
+        <input name="name" required placeholder="e.g. Night Dive" style="font-family:var(--font-body);font-size:15px;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff"></div>
+      <button class="btn btn-sm btn-red" type="submit">Add Type</button>
+      <span id="stype-msg" style="font-weight:600"></span>
+    </form>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr><th>Name</th><th>Sessions using it</th><th>Sort</th><th>Active</th><th></th></tr></thead>
+        <tbody id="stype-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- bundles tab -->
+  <div id="tab-bundles" style="display:none">
+    <p style="color:var(--ink-soft);margin-bottom:16px">Preset groups of session dates a student can pick in one click when enrolling. Choose a course, then bundle together one session per required slot.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <label style="font-weight:700;font-size:14px">Course</label>
+      <select id="bundle-course" style="font-family:var(--font-body);font-size:15px;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff;min-width:240px"></select>
+    </div>
+    <div id="bundle-list"></div>
+
+    <div class="card" style="box-shadow:none;margin-top:18px"><div class="pad" style="padding:16px 18px">
+      <h4 style="margin:0 0 12px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Add a bundle</h4>
+      <form id="bundle-form">
+        <div class="field"><label>Bundle name</label><input name="name" required placeholder="e.g. August Weekend Group"></div>
+        <div id="bundle-slots" style="margin:6px 0 12px"></div>
+        <button class="btn btn-sm btn-red" type="submit">Create Bundle</button>
+        <span id="bundle-msg" style="margin-left:12px;font-weight:600"></span>
+      </form>
+    </div></div>
   </div>
 
   <!-- accounts tab -->

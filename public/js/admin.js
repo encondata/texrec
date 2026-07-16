@@ -1775,17 +1775,114 @@ $('#homestat-add').addEventListener('click', async () => {
   loadHomeStats();
 });
 
+// ---------- session types ----------
+async function loadSessionTypes() {
+  const types = await authed('/api/admin/session-types');
+  $('#stype-rows').innerHTML = types.map(t => `
+    <tr data-st="${t.id}">
+      <td><input data-f="name" value="${esc(t.name)}" style="${HS_INPUT};width:200px"></td>
+      <td>${t.session_count}</td>
+      <td><input data-f="sort" type="number" value="${t.sort}" style="${HS_INPUT};width:64px"></td>
+      <td style="text-align:center"><input data-f="active" type="checkbox" ${t.active ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--red)"></td>
+      <td><div class="row-actions">
+        <button class="btn btn-sm btn-red" data-st-save="${t.id}">Save</button>
+        <button class="btn btn-sm btn-ghost" data-st-del="${t.id}">Delete</button>
+      </div></td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:24px">No session types yet — add one above.</td></tr>';
+  const msg = $('#stype-msg');
+  $$('#stype-rows [data-st-save]').forEach(b => b.addEventListener('click', async () => {
+    const tr = b.closest('tr');
+    try {
+      await authed(`/api/admin/session-types/${b.dataset.stSave}`, { method: 'PATCH', body: {
+        name: tr.querySelector('[data-f=name]').value,
+        sort: +tr.querySelector('[data-f=sort]').value || 0,
+        active: tr.querySelector('[data-f=active]').checked,
+      }});
+      msg.style.color = 'var(--ok)'; msg.textContent = 'Saved ✓';
+      setTimeout(() => msg.textContent = '', 2000);
+    } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+  }));
+  $$('#stype-rows [data-st-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete this session type?')) return;
+    try { await authed(`/api/admin/session-types/${b.dataset.stDel}`, { method: 'DELETE' }); loadSessionTypes(); }
+    catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+  }));
+}
+$('#stype-add-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, msg = $('#stype-msg');
+  try {
+    await authed('/api/admin/session-types', { method: 'POST', body: { name: f.elements.name.value.trim() } });
+    f.reset(); loadSessionTypes();
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
+
+// ---------- bundles ----------
+let bundleCourses = [], bundleSessions = [];
+async function loadBundles() {
+  [bundleCourses, bundleSessions] = await Promise.all([authed('/api/admin/courses'), authed('/api/admin/sessions')]);
+  const sel = $('#bundle-course'), prev = sel.value;
+  const withRecipe = bundleCourses.filter(c => c.slots.length);
+  sel.innerHTML = withRecipe.length
+    ? withRecipe.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')
+    : '<option value="">— no courses have a recipe yet —</option>';
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  await renderBundlesForCourse();
+}
+$('#bundle-course').addEventListener('change', renderBundlesForCourse);
+
+async function renderBundlesForCourse() {
+  const cid = +$('#bundle-course').value;
+  const course = bundleCourses.find(c => c.id === cid);
+  if (!course) { $('#bundle-list').innerHTML = ''; $('#bundle-slots').innerHTML = ''; return; }
+  const bundles = await authed(`/api/admin/bundles?course_id=${cid}`);
+  $('#bundle-list').innerHTML = bundles.length ? bundles.map(b => `
+    <div class="card" style="box-shadow:none;margin-bottom:10px"><div class="pad" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div><strong>${esc(b.name)}</strong>${b.active ? '' : ' <span class="chip" style="font-size:10px">hidden</span>'}<br>
+        <span style="font-size:13.5px;color:var(--ink-soft)">${b.sessions.map(s => `${esc(s.type_name)} · ${fmtDate(s.session_date.slice(0,10), { month:'short', day:'numeric' })}`).join('  ·  ') || 'no sessions'}</span></div>
+      <button class="btn btn-sm btn-ghost" data-bdel="${b.id}">Delete</button>
+    </div></div>`).join('') : '<p style="color:var(--ink-soft)">No bundles for this course yet.</p>';
+  $$('#bundle-list [data-bdel]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete this bundle?')) return;
+    await authed(`/api/admin/bundles/${b.dataset.bdel}`, { method: 'DELETE' });
+    renderBundlesForCourse();
+  }));
+  // one picker per required slot, listing open sessions of that type
+  $('#bundle-slots').innerHTML = course.slots.map((sl, i) => {
+    const opts = bundleSessions.filter(s => s.type_slug === sl.type_slug && s.status === 'open').map(s =>
+      `<option value="${s.id}">${fmtDate(s.session_date.slice(0,10), { weekday:'short', month:'short', day:'numeric' })}${s.start_time ? ' · ' + fmtTime(s.start_time) : ''}${s.location ? ' · ' + esc(s.location) : ''} (${s.enrolled}/${s.capacity})</option>`).join('');
+    return `<div class="field" style="margin:0 0 8px"><label>${esc(sl.type_name)}</label>
+      <select class="bundle-slot" style="font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff">
+        <option value="">— choose a ${esc(sl.type_name)} session —</option>${opts}</select></div>`;
+  }).join('');
+}
+
+$('#bundle-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const cid = +$('#bundle-course').value, name = e.target.elements.name.value.trim(), msg = $('#bundle-msg');
+  const session_ids = $$('#bundle-slots .bundle-slot').map(s => +s.value).filter(Boolean);
+  if (!cid || !name) return;
+  try {
+    await authed('/api/admin/bundles', { method: 'POST', body: { course_id: cid, name, session_ids } });
+    e.target.reset();
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Created ✓';
+    renderBundlesForCourse();
+    setTimeout(() => msg.textContent = '', 2500);
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
+
 // ---------- tabs ----------
 const TAB_LOADERS = {
-  inbox: loadInbox, regs: loadRegs, sessions: loadSessions, courses: loadCourses,
-  trips: loadTrips, customers: loadCustomers, staff: loadStaff, photos: loadPhotos,
-  sites: loadSites, homestats: loadHomeStats, accounts: loadAccounts, profile: loadProfile,
+  inbox: loadInbox, regs: loadRegs, sessions: loadSessions, sessiontypes: loadSessionTypes,
+  courses: loadCourses, bundles: loadBundles, trips: loadTrips, customers: loadCustomers,
+  staff: loadStaff, photos: loadPhotos, sites: loadSites, homestats: loadHomeStats,
+  accounts: loadAccounts, profile: loadProfile,
 };
 
 const ROLE_TABS = {
-  superadmin: ['inbox', 'regs', 'sessions', 'courses', 'trips', 'customers', 'staff', 'photos', 'sites', 'homestats', 'accounts', 'profile'],
-  admin: ['inbox', 'regs', 'sessions', 'courses', 'trips', 'customers', 'staff', 'photos', 'sites', 'homestats', 'accounts', 'profile'],
-  staff: ['inbox', 'regs', 'sessions', 'customers', 'profile'],
+  superadmin: ['inbox', 'regs', 'sessions', 'sessiontypes', 'courses', 'bundles', 'trips', 'customers', 'staff', 'photos', 'sites', 'homestats', 'accounts', 'profile'],
+  admin: ['inbox', 'regs', 'sessions', 'sessiontypes', 'courses', 'bundles', 'trips', 'customers', 'staff', 'photos', 'sites', 'homestats', 'accounts', 'profile'],
+  staff: ['inbox', 'regs', 'sessions', 'bundles', 'customers', 'profile'],
   instructor: ['inbox', 'sessions', 'customers', 'profile'],
 };
 
