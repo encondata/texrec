@@ -60,6 +60,8 @@
         <p class="blurb">${c.description}</p>
         <p style="margin-top:12px;font-size:14px;color:var(--ink-soft)">
           <strong>Prerequisites:</strong> ${c.prerequisites || 'None'}</p>
+        ${c.slots?.length ? `<p style="margin-top:8px;font-size:14px;color:var(--ink-soft)">
+          <strong>Sessions:</strong> ${c.slots.map(s => esc(s.type_name)).join(' · ')}</p>` : ''}
         ${(c.prereq_course_slug || c.next_courses.length) ? `
         <div class="pathway">
           ${c.prereq_course_slug ? `<a href="#${c.prereq_course_slug}">← ${c.prereq_course_name}</a>` : '<span class="start">Start here</span>'}
@@ -67,7 +69,7 @@
         </div>` : ''}
         <div class="foot">
           <span class="price">${priceLabel(c.price_cents, c.call_for_price)}</span>
-          <a class="btn btn-sm btn-red" href="/calendar?course=${c.slug}">See Dates</a>
+          <a class="btn btn-sm btn-red" href="/calendar?course=${c.slug}">${c.slots?.length ? 'Enroll &amp; Pick Dates' : 'See Dates'}</a>
         </div>
       </div>
     </div>`).join('');

@@ -78,19 +78,12 @@ async function enterDash() {
     enterDash();
   }));
 
-  // classes
-  $('#my-classes').innerHTML = me.registrations.length ? me.registrations.map(r => `
+  // enrollments
+  $('#my-classes').innerHTML = me.enrollments.length ? me.enrollments.map(r => `
     <div class="session-row">
-      <div class="session-date">
-        <span class="mon">${fmtDate(r.start_date.slice(0,10), { month: 'short' }).toUpperCase()}</span>
-        <span class="day">${new Date(r.start_date.slice(0,10) + 'T12:00:00').getDate()}</span>
-      </div>
-      <div>
+      <div style="grid-column:1 / -1">
         <h3>${esc(r.course_name)}</h3>
-        <div class="det">${fmtRange(r.start_date.slice(0,10), r.end_date.slice(0,10))} · ${r.start_time} · ${esc(r.location)}</div>
-        ${r.staff.length ? `<div class="det">With: ${r.staff.map(s => `${esc(s.name)} (${ROLE_LABEL[s.role] || s.role})`).join(', ')}</div>` : ''}
-        ${r.classmates?.length ? `<div class="det">Classmates: ${r.classmates.map(cm =>
-          `${esc(cm.name)} (<a href="mailto:${esc(cm.email)}">${esc(cm.email)}</a>${cm.phone ? `, ${esc(cm.phone)}` : ''})`).join(' · ')}</div>` : ''}
+        <div class="det">Enrolled ${fmtDate(r.created_at.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}</div>
         <div class="seats" style="margin-top:6px">
           <span class="status-pill ${r.status}">${r.status}</span>
           <span style="font-weight:400;color:var(--ink-soft);margin-left:8px">${STATUS_BLURB[r.status] || ''}</span>
@@ -98,21 +91,20 @@ async function enterDash() {
         ${r.status !== 'cancelled' ? (() => {
           const v = regValidation(r, me.customer);
           return `<div class="seats" style="margin-top:6px"><span class="form-flag ${v.color}">${
-            v.key === 'validated' ? 'Validated registration ✓' : v.label}</span></div>`;
+            v.key === 'validated' ? 'Validated ✓' : v.label}</span></div>`;
         })() : ''}
         ${r.requirement_progress?.length ? `
           ${r.needs_scheduling
-            ? `<div style="margin-top:8px"><span class="form-flag red" style="font-size:11.5px">⚠ Pick your class dates</span></div>`
+            ? `<div style="margin-top:8px"><span class="form-flag red" style="font-size:11.5px">⚠ Pick your session dates</span></div>`
             : `<div class="det" style="margin-top:8px">${r.requirement_progress.map(p =>
                 `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}" style="font-size:11px;padding:2px 7px;margin-right:5px">${
-                  SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join('')}</div>`}
+                  esc(p.label)} ${p.done}/${p.required}</span>`).join('')}</div>`}
           <div style="margin-top:8px"><button class="btn btn-sm ${r.needs_scheduling ? 'btn-red' : 'btn-ghost'}" data-mysess="${r.id}">${
             r.needs_scheduling ? 'Choose my sessions' : 'My sessions'}</button></div>
           <div id="mysess-${r.id}" style="display:none;margin-top:10px"></div>` : ''}
       </div>
-      <div></div>
     </div>`).join('')
-    : '<p style="color:var(--ink-soft)">No registrations yet — <a href="/calendar">find a class</a>.</p>';
+    : '<p style="color:var(--ink-soft)">No enrollments yet — <a href="/courses">browse courses</a>.</p>';
 
   // notes & certs
   $('#my-notes').innerHTML = me.notes.length ? me.notes.map(n => `
@@ -132,14 +124,9 @@ async function enterDash() {
     </div>`).join('')
     : '<p style="color:var(--ink-soft)">Nothing here yet — your instructor will add certifications and notes as you train.</p>';
 
-  // class photo upload — only for confirmed classes
-  const confirmed = me.registrations.filter(r => r.status === 'confirmed');
+  // (self-service photo upload is managed from each session; hidden on the account overview)
   const photoForm = $('#my-photo-form');
-  photoForm.style.display = confirmed.length ? 'flex' : 'none';
-  if (confirmed.length) {
-    photoForm.elements.session_id.innerHTML = confirmed.map(r =>
-      `<option value="${r.session_id}">${esc(r.course_name)} (${fmtDate(r.start_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })})</option>`).join('');
-  }
+  if (photoForm) photoForm.style.display = 'none';
 
   // media
   $('#my-media').innerHTML = me.media.length ? me.media.map(m => {
@@ -148,13 +135,13 @@ async function enterDash() {
     const mine = m.uploaded_by_customer_id === me.customer.id;
     return `
     <div class="media-card" data-id="${m.id}" data-img="${isImg}" data-title="${esc(m.title || m.original_name)}"
-         data-meta="${esc(m.course_name)} · ${fmtDate(m.start_date.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}">
+         data-meta="${esc(m.type_name)} · ${fmtDate(m.session_date.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}">
       ${isImg
         ? `<img src="${src}" alt="${esc(m.title || m.original_name)}" loading="lazy">`
         : `<div class="doc-icon">📄</div>`}
       <div class="mc-body">
         <strong>${esc(m.title || m.original_name)}</strong>
-        <span>${esc(m.course_name)}${mine ? ' · yours' : ''}</span>
+        <span>${esc(m.type_name)}${mine ? ' · yours' : ''}</span>
         ${mine ? `<div style="margin-top:6px"><button class="btn btn-sm btn-ghost" data-mymedia-del="${m.id}">Delete</button></div>` : ''}
       </div>
     </div>`;
@@ -234,7 +221,7 @@ async function loadMySessions(regId) {
   const box = $(`#mysess-${regId}`);
   if (!box) return;
   box.dataset.loaded = '1';
-  renderMySessions(regId, await cauthed(`/api/customer/registrations/${regId}/sessions`));
+  renderMySessions(regId, await cauthed(`/api/customer/enrollments/${regId}/sessions`));
 }
 
 function renderMySessions(regId, data) {
@@ -242,28 +229,25 @@ function renderMySessions(regId, data) {
   if (!box) return;
   const sched = data.scheduled.length ? data.scheduled.map(s => `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
-      <div><strong>${SESSION_TYPE_LABEL[s.type] || s.type}</strong>${s.title ? ' · ' + esc(s.title) : ''}<br>
-        <span style="font-size:13px;color:var(--ink-soft)">${fmtDate(s.meeting_date.slice(0,10), { weekday:'short', month:'short', day:'numeric' })}${
-          s.start_time ? ' · ' + fmtTime(s.start_time) : ''}${s.location ? ' · ' + esc(s.location) : ''}${s.own_class ? '' : ' · makeup with another group'}</span></div>
+      <div><strong>${esc(s.type_name)}</strong>${s.title ? ' · ' + esc(s.title) : ''}<br>
+        <span style="font-size:13px;color:var(--ink-soft)">${fmtDate(s.session_date.slice(0,10), { weekday:'short', month:'short', day:'numeric' })}${
+          s.start_time ? ' · ' + s.start_time : ''}${s.location ? ' · ' + esc(s.location) : ''}</span></div>
       <div>${['attended', 'completed'].includes(s.status)
         ? '<span class="form-flag green" style="font-size:11px;padding:2px 7px">Done</span>'
-        : `<button class="btn btn-sm btn-ghost" data-mydel="${s.attendance_id}" data-reg="${regId}">Remove</button>`}</div>
-    </div>`).join('') : '<p style="color:var(--ink-soft);font-size:14px;margin:2px 0">No sessions chosen yet — auto-select or pick your dates below.</p>';
+        : `<button class="btn btn-sm btn-ghost" data-mydel="${s.es_id}" data-reg="${regId}">Remove</button>`}</div>
+    </div>`).join('') : '<p style="color:var(--ink-soft);font-size:14px;margin:2px 0">No sessions chosen yet — pick your dates below.</p>';
   const cands = data.candidates.length ? `
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
       <select id="mycand-${regId}" style="flex:1;min-width:220px;font-family:var(--font-body);font-size:14px;padding:9px 11px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
         <option value="">— choose a date to add —</option>
-        ${data.candidates.map(c => `<option value="${c.meeting_id}">${c.own_class ? '' : '[Makeup] '}${
-          SESSION_TYPE_LABEL[c.type] || c.type} · ${fmtDate(c.meeting_date.slice(0,10), { month:'short', day:'numeric' })}${
-          c.title ? ' · ' + esc(c.title) : ''} · ${Math.max(0, c.capacity - c.enrolled)} spots left</option>`).join('')}
+        ${data.candidates.map(c => `<option value="${c.session_id}">${
+          esc(c.type_name)} · ${fmtDate(c.session_date.slice(0,10), { month:'short', day:'numeric' })}${
+          c.start_time ? ' ' + c.start_time : ''}${c.title ? ' · ' + esc(c.title) : ''} · ${Math.max(0, c.capacity - c.enrolled)} spots left</option>`).join('')}
       </select>
       <button class="btn btn-sm btn-red" data-myadd="${regId}">Add</button>
     </div>` : '<p style="color:var(--ink-soft);font-size:13px;margin-top:10px">No more dates available right now — call us if you need options.</p>';
   box.innerHTML = `<div style="background:var(--sand);border-radius:9px;padding:14px 16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
-      <strong style="font-size:14.5px">Your sessions</strong>
-      <button class="btn btn-sm btn-ghost" data-myauto="${regId}">Auto-select for me</button>
-    </div>
+    <strong style="font-size:14.5px">Your sessions</strong>
     ${sched}${cands}
     <div class="form-msg" id="mysess-msg-${regId}" style="font-size:13px;margin-top:8px"></div>
   </div>`;
@@ -278,7 +262,7 @@ async function refreshAfterSess(regId) {
 
 // one delegated handler for all session controls (survives dashboard re-renders)
 $('#my-classes').addEventListener('click', async e => {
-  const t = e.target.closest('[data-mysess],[data-myauto],[data-myadd],[data-mydel]');
+  const t = e.target.closest('[data-mysess],[data-myadd],[data-mydel]');
   if (!t) return;
   try {
     if (t.dataset.mysess) {
@@ -286,20 +270,17 @@ $('#my-classes').addEventListener('click', async e => {
       const opening = box.style.display === 'none';
       box.style.display = opening ? '' : 'none';
       if (opening && !box.dataset.loaded) await loadMySessions(+t.dataset.mysess);
-    } else if (t.dataset.myauto) {
-      await cauthed(`/api/customer/registrations/${t.dataset.myauto}/autofill`, { method: 'POST' });
-      await refreshAfterSess(+t.dataset.myauto);
     } else if (t.dataset.myadd) {
       const mid = $(`#mycand-${t.dataset.myadd}`).value;
       if (!mid) return;
-      await cauthed(`/api/customer/registrations/${t.dataset.myadd}/sessions`, { method: 'POST', body: { meeting_id: +mid } });
+      await cauthed(`/api/customer/enrollments/${t.dataset.myadd}/sessions`, { method: 'POST', body: { session_id: +mid } });
       await refreshAfterSess(+t.dataset.myadd);
     } else if (t.dataset.mydel) {
-      await cauthed(`/api/customer/attendance/${t.dataset.mydel}`, { method: 'DELETE' });
+      await cauthed(`/api/customer/enrollment-sessions/${t.dataset.mydel}`, { method: 'DELETE' });
       await refreshAfterSess(+t.dataset.reg);
     }
   } catch (err) {
-    const msg = $(`#mysess-msg-${t.dataset.myauto || t.dataset.myadd || t.dataset.reg || t.dataset.mysess}`);
+    const msg = $(`#mysess-msg-${t.dataset.myadd || t.dataset.reg || t.dataset.mysess}`);
     if (msg) { msg.className = 'form-msg err'; msg.textContent = err.message; } else alert(err.message);
   }
 });

@@ -50,8 +50,8 @@
 
   <div class="tabs" style="flex-wrap:wrap">
     <button data-tab="inbox">Inbox <span class="count" id="inbox-count" style="display:none"></span></button>
-    <button data-tab="regs" class="active">Registrations <span class="count" id="pending-count" style="display:none"></span></button>
-    <button data-tab="sessions">Classes</button>
+    <button data-tab="regs" class="active">Enrollments <span class="count" id="pending-count" style="display:none"></span></button>
+    <button data-tab="sessions">Sessions</button>
     <button data-tab="courses">Courses</button>
     <button data-tab="trips">Trips</button>
     <button data-tab="customers">Customers</button>
@@ -87,7 +87,7 @@
     <div class="table-scroll">
       <table class="data">
         <thead><tr>
-          <th>Student</th><th>Class</th><th>Starts</th><th>Contact</th><th>Notes</th><th>Status</th><th>Validation</th><th>Actions</th>
+          <th>Student</th><th>Course</th><th>Contact</th><th>Notes</th><th>Status</th><th>Validation</th><th>Actions</th>
         </tr></thead>
         <tbody id="reg-rows"></tbody>
       </table>
@@ -101,27 +101,24 @@
     </div>
     <div class="form-holder" hidden>
     <div class="card" id="session-form-card"><div class="pad">
-      <h3 id="session-form-title" style="margin-bottom:14px">Add a class session</h3>
+      <h3 id="session-form-title" style="margin-bottom:14px">Add a session</h3>
       <form id="session-form">
         <input type="hidden" name="id">
         <div class="field-row">
-          <div class="field"><label>Course</label><select name="course_id" id="s-course" required></select></div>
-          <div class="field"><label>Class name <span style="font-weight:400;text-transform:none">(optional — overrides the course name)</span></label>
-            <input name="title" placeholder="e.g. Open Water — August Group"></div>
+          <div class="field"><label>Session type</label><select name="session_type_id" id="s-type" required></select></div>
+          <div class="field"><label>Name <span style="font-weight:400;text-transform:none">(optional — e.g. "Evening pool")</span></label>
+            <input name="title" placeholder="Optional label"></div>
         </div>
         <div class="field"><label>Location <span style="font-weight:400;text-transform:none">(type to search sites, or enter your own)</span></label>
-          <input name="location" list="s-locations" required placeholder="Start typing a site name…">
+          <input name="location" list="s-locations" placeholder="Start typing a site name…">
           <datalist id="s-locations"></datalist></div>
-        <label style="display:flex;align-items:center;gap:8px;margin:2px 0 12px;font-size:14px;color:var(--ink-soft);cursor:pointer">
-          <input type="checkbox" id="s-singleday" style="width:15px;height:15px;accent-color:var(--red)"> Single-day class
-        </label>
         <div class="field-row">
-          <div class="field"><label>Start date</label><input name="start_date" type="date" required></div>
-          <div class="field" id="s-enddate-field"><label>End date</label><input name="end_date" type="date"></div>
+          <div class="field"><label>Date</label><input name="session_date" type="date" required></div>
+          <div class="field"><label>Capacity</label><input name="capacity" type="number" min="1" value="6"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Start time</label><input name="start_time" type="time" value="09:00"></div>
-          <div class="field"><label>Capacity</label><input name="capacity" type="number" min="1" value="8"></div>
+          <div class="field"><label>Start time</label><input name="start_time" type="time"></div>
+          <div class="field"><label>End time</label><input name="end_time" type="time"></div>
         </div>
         <div class="field"><label>Notes</label><input name="notes" placeholder="Optional"></div>
         <button class="btn btn-sm btn-red" type="submit">Add Session</button>
@@ -132,7 +129,7 @@
     <div class="table-scroll">
       <table class="data">
         <thead><tr>
-          <th></th><th>Class</th><th>Dates</th><th>Lead</th><th>Enrolled</th><th>Status</th><th>Actions</th>
+          <th></th><th>Session</th><th>Date</th><th>Lead</th><th>Enrolled</th><th>Status</th><th>Actions</th>
         </tr></thead>
         <tbody id="session-rows"></tbody>
       </table>
@@ -164,28 +161,10 @@
         </form>
       </div>
 
-      <!-- dated Sessions under this class (pool nights, lake days…) -->
-      <div class="staff-only" id="sd-sessions-section">
-        <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Sessions
-          <span style="font-weight:400;text-transform:none;letter-spacing:0"> — the individual dates for this class</span></h4>
-        <div class="table-scroll"><table class="data"><thead><tr>
-          <th>Type</th><th>Name</th><th>Date</th><th>Time</th><th>Location</th><th>Cap</th><th></th>
-        </tr></thead><tbody id="sd-sessions"></tbody></table></div>
-        <form id="meeting-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
-          <div class="field" style="margin:0;min-width:150px"><label>Type</label><select name="type" id="m-type"></select></div>
-          <div class="field" style="margin:0"><label>Name (optional)</label><input name="title" placeholder="e.g. Lake Day 2"></div>
-          <div class="field" style="margin:0"><label>Date</label><input name="meeting_date" type="date" required></div>
-          <div class="field" style="margin:0"><label>Time</label><input name="start_time" type="time"></div>
-          <div class="field" style="margin:0;min-width:160px"><label>Location</label><input name="location" list="s-locations" placeholder="site or address"></div>
-          <div class="field" style="margin:0"><label>Cap</label><input name="capacity" type="number" min="1" value="6" style="width:72px"></div>
-          <button class="btn btn-sm btn-red" type="submit">Add Session</button>
-          <span id="meeting-msg" style="font-weight:600;font-size:13px"></span>
-        </form>
-      </div>
-
-      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Roster</h4>
+      <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Roster
+        <span style="font-weight:400;text-transform:none;letter-spacing:0"> — students enrolled in this session</span></h4>
       <div class="table-scroll"><table class="data"><thead><tr>
-        <th>Student</th><th>Contact</th><th>Cert Level</th><th>Status</th><th></th>
+        <th>Student</th><th>Course</th><th>Attendance</th><th></th>
       </tr></thead><tbody id="sd-roster"></tbody></table></div>
       <h4 style="margin:22px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Class Photos &amp; Files
         <span style="font-weight:400;text-transform:none;letter-spacing:0"> — visible to confirmed students in their account portal</span></h4>
@@ -242,10 +221,9 @@
           <div class="field"><label>Visible on site</label>
             <select name="active"><option value="true">Yes — listed publicly</option><option value="false">No — hidden</option></select></div>
         </div>
-        <div class="field"><label>Session requirements
-          <span style="font-weight:400;text-transform:none">(what a student must complete to finish — e.g. 1 Pool + 2 Open Water)</span></label>
+        <div class="field"><label>Required sessions <span style="font-weight:400;text-transform:none">(the recipe — one slot per required session, in order; e.g. Pool → Lake Day 1 → Lake Day 2)</span></label>
           <div id="req-rows" style="display:flex;flex-direction:column;gap:8px"></div>
-          <button type="button" class="btn btn-sm btn-ghost" id="req-add" style="margin-top:8px">+ Add requirement</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="req-add" style="margin-top:8px">+ Add a required session</button>
         </div>
         <button class="btn btn-sm btn-red" type="submit" id="course-submit">Add Course</button>
         <button class="btn btn-sm btn-ghost" type="button" id="course-cancel" style="display:none;margin-left:8px">Cancel Edit</button>
@@ -428,16 +406,15 @@ placeholder='[
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
           <strong id="cds-title" style="font-size:15px"></strong>
           <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-sm btn-ghost" id="cds-autofill">Auto-fill required</button>
             <button class="btn btn-sm btn-ghost" id="cds-close">Hide</button>
           </div>
         </div>
         <div id="cds-progress" style="margin-bottom:10px"></div>
         <div class="table-scroll"><table class="data"><thead><tr>
-          <th>Type</th><th>Session</th><th>Date</th><th>Group</th><th>Attendance</th><th></th>
+          <th>Type</th><th>Session</th><th>Date</th><th>Location</th><th>Attendance</th><th></th>
         </tr></thead><tbody id="cds-scheduled"></tbody></table></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
-          <div class="field" style="margin:0;min-width:280px"><label>Add a session (own group or a makeup with another group)</label>
+          <div class="field" style="margin:0;min-width:280px"><label>Add a session</label>
             <select id="cds-candidate" style="font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff;width:100%"></select></div>
           <button class="btn btn-sm btn-red" id="cds-add">Add Session</button>
           <span id="cds-msg" style="font-weight:600;font-size:13px"></span>

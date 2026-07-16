@@ -34,10 +34,10 @@ $('#logout').addEventListener('click', async () => {
   show('login');
 });
 
-// ---------- registrations ----------
+// ---------- enrollments ----------
 async function loadRegs() {
   let regs;
-  try { regs = await authed(`/api/admin/registrations${regFilter ? `?status=${regFilter}` : ''}`); }
+  try { regs = await authed(`/api/admin/enrollments${regFilter ? `?status=${regFilter}` : ''}`); }
   catch (err) { if (err.status === 401) { sessionStorage.clear(); token = null; show('login'); } return; }
 
   const pending = regs.filter(r => r.status === 'pending').length;
@@ -52,13 +52,12 @@ async function loadRegs() {
       <td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong><br>
         <span style="font-size:13px;color:var(--ink-soft)">${esc(r.cert_level) || 'New diver'}</span></td>
       <td>${esc(r.course_name)}<br>
-        <span style="font-size:13px;color:var(--ink-soft)">${r.session_registered}/${r.capacity} enrolled</span></td>
-      <td>${fmtDate(r.start_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+        <span style="font-size:13px;color:var(--ink-soft)">${r.sessions_scheduled} session${r.sessions_scheduled === 1 ? '' : 's'} chosen</span></td>
       <td style="font-size:14px"><a href="mailto:${esc(r.email)}">${esc(r.email)}</a><br>${esc(r.phone)}</td>
       <td style="font-size:14px;max-width:180px">${esc(r.notes) || '—'}</td>
       <td><span class="status-pill ${r.status}">${r.status}</span></td>
       <td><span class="form-flag ${regValidation(r, r).color}" title="Paid, medical & coursework">${regValidation(r, r).label}</span>
-        ${r.needs_scheduling ? `<br><span class="form-flag red" style="font-size:11px;padding:2px 7px;margin-top:4px;display:inline-block" title="No class sessions scheduled yet">⚠ Needs scheduling</span>` : ''}</td>
+        ${r.needs_scheduling ? `<br><span class="form-flag red" style="font-size:11px;padding:2px 7px;margin-top:4px;display:inline-block" title="No sessions chosen yet">⚠ Needs scheduling</span>` : ''}</td>
       <td><div class="row-actions">
         ${r.customer_id ? `<button class="btn btn-sm btn-ghost" data-reccust="${r.customer_id}">Record</button>` : ''}
         ${r.status !== 'confirmed' ? `<button class="btn btn-sm btn-red" data-act="confirmed" data-id="${r.id}">Confirm</button>` : ''}
@@ -66,11 +65,11 @@ async function loadRegs() {
         ${r.status === 'cancelled' ? `<button class="btn btn-sm btn-ghost" data-act="pending" data-id="${r.id}">Reopen</button>` : ''}
       </div></td>
     </tr>`).join('')
-    : '<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:30px">No registrations here.</td></tr>';
+    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:30px">No enrollments here.</td></tr>';
 
   $$('#reg-rows [data-act]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true;
-    await authed(`/api/admin/registrations/${b.dataset.id}`, {
+    await authed(`/api/admin/enrollments/${b.dataset.id}`, {
       method: 'PATCH', body: { status: b.dataset.act } });
     loadRegs();
   }));
@@ -96,24 +95,25 @@ const CREW_ROLES = {
 };
 let sessionCache = [];
 let crewStaffCache = [];   // active staff, for the crew picker in the detail panel
+let sessionTypesCache = [];
+const ATT_LABELS = { scheduled: 'Scheduled', attended: 'Attended', completed: 'Completed', no_show: 'No-show', excused: 'Excused' };
 
 async function loadSessions() {
   const isInstructor = me?.role === 'instructor';
-  const reqs = [authed('/api/admin/sessions'), api('/api/courses')];
+  const reqs = [authed('/api/admin/sessions'), api('/api/session-types')];
   if (!isInstructor) reqs.push(authed('/api/admin/staff'), api('/api/sites'));
-  const [sessions, courses, staff, sites] = await Promise.all(reqs);
+  const [sessions, types, staff, sites] = await Promise.all(reqs);
   sessionCache = sessions;
+  sessionTypesCache = types;
   crewStaffCache = (staff || []).filter(p => p.active);
 
   if (!isInstructor) {
-    $('#s-course').innerHTML = courses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-    // location typeahead: site name + city
+    $('#s-type').innerHTML = types.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
     $('#s-locations').innerHTML = (sites || []).map(s =>
       `<option value="${esc(s.name)}${s.location ? ' — ' + esc(s.location) : ''}"></option>`).join('');
     $('#crew-role').innerHTML = Object.entries(CREW_ROLES).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
   }
 
-  // read-only crew chips for the row expansion
   const crewChips = s => s.staff.length
     ? `<div class="crew-chips">${s.staff.map(p =>
         `<span class="chip ${p.role}">${esc(p.name)} · ${CREW_ROLES[p.role]}</span>`).join('')}</div>`
@@ -124,11 +124,11 @@ async function loadSessions() {
     return `
     <tr class="mrow" data-x="${s.id}">
       <td class="chev">▸</td>
-      <td><strong>${esc(s.title || s.course_name)}</strong>${s.title ? `<br><span style="font-size:12px;color:var(--ink-soft)">${esc(s.course_name)}</span>` : ''}</td>
-      <td>${fmtRange(s.start_date.slice(0,10), s.end_date.slice(0,10))}</td>
+      <td><strong>${esc(s.title || s.type_name)}</strong>${s.title ? `<br><span style="font-size:12px;color:var(--ink-soft)">${esc(s.type_name)}</span>` : ''}</td>
+      <td>${fmtDate(s.session_date.slice(0,10), { weekday:'short', month:'short', day:'numeric' })}${s.start_time ? ' · ' + fmtTime(s.start_time) : ''}</td>
       <td>${lead ? esc(lead.name) : '<span style="color:var(--warn);font-weight:700">Unassigned</span>'}
-        ${s.staff.length > 1 ? `<span class="chip" style="font-size:10px">+${s.staff.length - 1} crew</span>` : ''}</td>
-      <td>${s.registered}/${s.capacity}</td>
+        ${s.staff.length > 1 ? `<span class="chip" style="font-size:10px">+${s.staff.length - 1}</span>` : ''}</td>
+      <td>${s.enrolled}/${s.capacity}</td>
       <td><span class="status-pill ${s.status === 'open' ? 'confirmed' : s.status === 'cancelled' ? 'cancelled' : 'pending'}">${s.status}</span></td>
       <td><div class="row-actions">
         <button class="btn btn-sm btn-ghost" data-sdetail="${s.id}">Roster &amp; Files</button>
@@ -140,29 +140,27 @@ async function loadSessions() {
       </div></td>
     </tr>
     <tr class="xrow" data-xrow="${s.id}" hidden><td colspan="7"><div class="xpand">
-      <div><span class="xl">Location &amp; Time</span>${esc(s.location)} · starts ${(s.start_time || '').slice(0,5)}</div>
+      <div><span class="xl">When &amp; where</span>${fmtDate(s.session_date.slice(0,10), { weekday:'long', month:'long', day:'numeric', year:'numeric' })}${s.start_time ? ' · ' + fmtTime(s.start_time) : ''}${s.location ? ' · ' + esc(s.location) : ''}</div>
       ${s.notes ? `<div><span class="xl">Notes</span>${esc(s.notes)}</div>` : ''}
       <div><span class="xl">Crew</span>${crewChips(s)}</div>
     </div></td></tr>`;
   }).join('')
-    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:30px">No classes here yet.</td></tr>';
+    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:30px">No sessions yet — add pool nights, lake days, and class dates.</td></tr>';
   wireExpand('#session-rows');
 
   $$('#session-rows [data-sedit]').forEach(b => b.addEventListener('click', () => {
     const s = sessionCache.find(x => x.id === +b.dataset.sedit);
     const f = $('#session-form').elements;
     f.id.value = s.id;
-    f.course_id.value = s.course_id;
-    f.course_id.disabled = true; // course can't change once scheduled
+    f.session_type_id.value = s.session_type_id;
     f.title.value = s.title || '';
-    f.location.value = s.location;
-    f.start_date.value = s.start_date.slice(0,10);
-    f.end_date.value = s.end_date.slice(0,10);
-    f.start_time.value = (s.start_time || '09:00').slice(0,5);
+    f.location.value = s.location || '';
+    f.session_date.value = s.session_date.slice(0,10);
+    f.start_time.value = (s.start_time || '').slice(0,5);
+    f.end_time.value = (s.end_time || '').slice(0,5);
     f.capacity.value = s.capacity;
     f.notes.value = s.notes || '';
-    setSingleDay(s.start_date.slice(0,10) === s.end_date.slice(0,10));
-    $('#session-form-title').textContent = `Editing: ${sessionCache.find(x=>x.id===s.id).title || s.course_name}`;
+    $('#session-form-title').textContent = `Editing: ${s.title || s.type_name}`;
     $('#session-form button[type=submit]').textContent = 'Save Changes';
     openFormModal('session-form-card');
   }));
@@ -170,7 +168,7 @@ async function loadSessions() {
   $$('#session-rows [data-sdel]').forEach(b => b.addEventListener('click', async () => {
     const s = sessionCache.find(x => x.id === +b.dataset.sdel);
     if (await deleteWithForce(`/api/admin/sessions/${s.id}`,
-      `Delete ${s.course_name} starting ${s.start_date.slice(0,10)}? This cannot be undone.`)) {
+      `Delete the ${s.type_name} session on ${s.session_date.slice(0,10)}? This cannot be undone.`)) {
       loadSessions();
     }
   }));
@@ -186,92 +184,42 @@ async function loadSessions() {
     b.addEventListener('click', () => openSessionDetail(+b.dataset.sdetail)));
 }
 
-// single-day toggle: hide the end-date field and mirror start → end on submit
-function setSingleDay(on) {
-  $('#s-singleday').checked = on;
-  $('#s-enddate-field').style.display = on ? 'none' : '';
-}
-$('#s-singleday').addEventListener('change', e => {
-  $('#s-enddate-field').style.display = e.target.checked ? 'none' : '';
-});
-
-// ---------- session detail: roster + media ----------
+// ---------- session detail: roster (with attendance) + crew + media ----------
 let detailSessionId = null;
 
 async function openSessionDetail(id) {
   detailSessionId = id;
   const s = sessionCache.find(x => x.id === id);
-  $('#sd-title').textContent = `${s.title || s.course_name} — ${fmtDate(s.start_date.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  $('#sd-title').textContent = `${s.title || s.type_name} — ${fmtDate(s.session_date.slice(0,10), { month: 'long', day: 'numeric', year: 'numeric' })}`;
   $('#session-detail').style.display = '';
   renderCrew(s);
+  const canEdit = me?.role !== 'instructor';
   const [roster, media] = await Promise.all([
     authed(`/api/admin/sessions/${id}/roster`),
     authed(`/api/admin/sessions/${id}/media`)]);
 
   $('#sd-roster').innerHTML = roster.length ? roster.map(r => `
     <tr>
-      <td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong></td>
-      <td style="font-size:14px"><a href="mailto:${esc(r.email)}">${esc(r.email)}</a><br>${esc(r.phone)}</td>
-      <td>${esc(r.cert_level) || 'New diver'}</td>
-      <td><span class="status-pill ${r.status}">${r.status}</span></td>
+      <td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong><br>
+        <span style="font-size:13px;color:var(--ink-soft)"><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></span></td>
+      <td style="font-size:14px">${esc(r.course_name)}</td>
+      <td><select data-att="${r.es_id}" ${canEdit ? '' : 'disabled'} style="font-family:var(--font-body);font-size:13px;padding:5px 7px;border:1.5px solid var(--line);border-radius:6px;background:#fff">
+        ${Object.entries(ATT_LABELS).map(([k, l]) => `<option value="${k}" ${r.attendance === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td>${r.customer_id ? `<button class="btn btn-sm btn-ghost" data-open-cust="${r.customer_id}">Record</button>` : ''}</td>
     </tr>`).join('')
-    : '<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:20px">No students registered yet.</td></tr>';
+    : '<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:20px">No students enrolled in this session yet.</td></tr>';
   $$('#sd-roster [data-open-cust]').forEach(b => b.addEventListener('click', () => {
     switchTab('customers');
     openCustomerDetail(+b.dataset.openCust);
   }));
+  $$('#sd-roster [data-att]').forEach(sel => sel.addEventListener('change', async () => {
+    try { await authed(`/api/admin/enrollment-sessions/${sel.dataset.att}`, { method: 'PATCH', body: { status: sel.value } }); }
+    catch (err) { alert(err.message); }
+  }));
 
   renderSessionMedia(media);
-  loadMeetings(id);
   $('#session-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-
-// ---------- class "Sessions" (dated events) editor in the detail panel ----------
-async function loadMeetings(sessionId) {
-  const sec = $('#sd-sessions-section');
-  if (me?.role === 'instructor') { sec.style.display = 'none'; return; }   // schedule editing is staff+
-  sec.style.display = '';
-  const sel = $('#m-type');
-  if (!sel.dataset.filled) {
-    sel.innerHTML = SESSION_TYPES.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
-    sel.dataset.filled = '1';
-  }
-  const meetings = await authed(`/api/admin/sessions/${sessionId}/meetings`);
-  $('#sd-sessions').innerHTML = meetings.length ? meetings.map(m => `
-    <tr>
-      <td><span class="chip">${SESSION_TYPE_LABEL[m.type] || m.type}</span></td>
-      <td>${esc(m.title) || '—'}</td>
-      <td>${fmtDate(m.meeting_date.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}</td>
-      <td>${fmtTime(m.start_time) || '—'}</td>
-      <td style="font-size:13.5px">${esc(m.location) || '—'}</td>
-      <td>${m.enrolled}/${m.capacity}</td>
-      <td><button class="btn btn-sm btn-ghost" data-mdel="${m.id}">Delete</button></td>
-    </tr>`).join('')
-    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:14px">No sessions scheduled yet.</td></tr>';
-  $$('#sd-sessions [data-mdel]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this session date?')) return;
-    await authed(`/api/admin/meetings/${b.dataset.mdel}`, { method: 'DELETE' });
-    loadMeetings(sessionId);
-  }));
-}
-
-$('#meeting-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const msg = $('#meeting-msg'), f = e.target;
-  const body = {
-    type: f.type.value, title: f.title.value.trim(), meeting_date: f.meeting_date.value,
-    start_time: f.start_time.value || null, location: f.location.value.trim(),
-    capacity: +f.capacity.value || 6,
-  };
-  try {
-    await authed(`/api/admin/sessions/${detailSessionId}/meetings`, { method: 'POST', body });
-    f.reset(); f.capacity.value = 6;
-    msg.style.color = 'var(--ok)'; msg.textContent = 'Added ✓';
-    setTimeout(() => { msg.textContent = ''; }, 2000);
-    loadMeetings(detailSessionId);
-  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
-});
 
 // ---------- crew management (explicit add/remove, in the detail panel) ----------
 function renderCrew(s) {
@@ -363,12 +311,9 @@ function resetSessionForm() {
   const f = $('#session-form');
   f.reset();
   f.elements.id.value = '';
-  f.elements.course_id.disabled = false;
-  f.elements.capacity.value = '8';
-  f.elements.start_time.value = '09:00';
+  f.elements.capacity.value = '6';
   f.elements.location.value = 'TexRec HQ — Burleson, TX';
-  setSingleDay(false);
-  $('#session-form-title').textContent = 'Add a class session';
+  $('#session-form-title').textContent = 'Add a session';
   $('#session-form button[type=submit]').textContent = 'Add Session';
   $('#session-msg').textContent = '';
 }
@@ -377,17 +322,12 @@ $('#session-form').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('#session-msg');
   const data = Object.fromEntries(new FormData(e.target));
-  // single-day class → end date mirrors the start date
-  if ($('#s-singleday').checked || !data.end_date) data.end_date = data.start_date;
-  data.capacity = +data.capacity || 8;
+  data.capacity = +data.capacity || 6;
+  data.session_type_id = +data.session_type_id;
   const id = data.id; delete data.id;
   try {
-    if (id) {
-      delete data.course_id;
-      await authed(`/api/admin/sessions/${id}`, { method: 'PATCH', body: data });
-    } else {
-      await authed('/api/admin/sessions', { method: 'POST', body: data });
-    }
+    if (id) await authed(`/api/admin/sessions/${id}`, { method: 'PATCH', body: data });
+    else await authed('/api/admin/sessions', { method: 'POST', body: data });
     resetSessionForm();
     closeAdmModal();
     loadSessions();
@@ -1084,7 +1024,7 @@ $('#site-form').addEventListener('submit', async e => {
 let courseCache = [];
 
 async function loadCourses() {
-  courseCache = await authed('/api/admin/courses');
+  [courseCache, sessionTypesCache] = await Promise.all([authed('/api/admin/courses'), api('/api/session-types')]);
   $('#c-prereq').innerHTML = '<option value="">— Start of progression —</option>' +
     courseCache.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 
@@ -1131,7 +1071,7 @@ async function loadCourses() {
     f.call_for_price.checked = !!c.call_for_price;
     f.prereq_course_id.value = c.prereq_course_id ?? '';
     f.active.value = String(c.active);
-    setRequirements(c.requirements);
+    setRequirements(c.slots);
     $('#course-form-title').textContent = `Editing: ${c.name}`;
     $('#course-submit').textContent = 'Save Changes';
     $('#course-cancel').style.display = '';
@@ -1145,30 +1085,26 @@ async function loadCourses() {
   }));
 }
 
-// ---------- course session-requirements editor ----------
-function reqRowHTML(type = 'pool', count = 1) {
-  const opts = SESSION_TYPES.map(t => `<option value="${t.key}" ${t.key === type ? 'selected' : ''}>${t.label}</option>`).join('');
-  return `<div class="req-row" style="display:flex;gap:8px;align-items:center">
-    <select class="req-type" style="flex:1;font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff">${opts}</select>
-    <input class="req-count" type="number" min="1" value="${count}" title="How many required"
-      style="width:80px;font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px">
+// ---------- course recipe editor (ordered required session slots) ----------
+function slotRowHTML(typeId = '') {
+  const opts = sessionTypesCache.map(t =>
+    `<option value="${t.id}" ${t.id === typeId ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+  return `<div class="req-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+    <select class="slot-type" style="flex:1;font-family:var(--font-body);font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:6px;background:#fff">${opts}</select>
     <button type="button" class="btn btn-sm btn-ghost req-del" title="Remove">✕</button>
   </div>`;
 }
-function addReqRow(type, count) {
-  $('#req-rows').insertAdjacentHTML('beforeend', reqRowHTML(type, count));
+function addReqRow(typeId) {
+  $('#req-rows').insertAdjacentHTML('beforeend', slotRowHTML(typeId));
   const row = $('#req-rows').lastElementChild;
   row.querySelector('.req-del').addEventListener('click', () => row.remove());
 }
-function setRequirements(reqs) {
+function setRequirements(slots) {
   $('#req-rows').innerHTML = '';
-  (reqs || []).forEach(r => addReqRow(r.type, r.count));
+  (slots || []).forEach(s => addReqRow(s.session_type_id));
 }
 function gatherRequirements() {
-  return $$('#req-rows .req-row').map(row => ({
-    type: row.querySelector('.req-type').value,
-    count: parseInt(row.querySelector('.req-count').value, 10) || 1,
-  }));
+  return $$('#req-rows .req-row').map(row => ({ session_type_id: +row.querySelector('.slot-type').value }));
 }
 $('#req-add').addEventListener('click', () => addReqRow());
 
@@ -1258,7 +1194,7 @@ $('#course-form').addEventListener('submit', async e => {
     price_cents: Math.round(+f.price.value * 100), call_for_price: f.call_for_price.checked,
     prereq_course_id: f.prereq_course_id.value ? +f.prereq_course_id.value : '',
     sort: +f.sort.value || 0, active: f.active.value === 'true',
-    requirements: gatherRequirements(),
+    slots: gatherRequirements(),
   };
   try {
     if (f.id.value) await authed(`/api/admin/courses/${f.id.value}`, { method: 'PATCH', body });
@@ -1480,8 +1416,7 @@ async function openCustomerDetail(id) {
   renderRegsTable();
 
   $('#note-session').innerHTML = '<option value="">— None —</option>' +
-    d.registrations.map(r =>
-      `<option value="${r.session_id}">${esc(r.course_name)} (${fmtDate(r.start_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })})</option>`).join('');
+    d.enrollments.map(r => `<option value="${r.id}">${esc(r.course_name)}</option>`).join('');
 
   renderCustomerNotes(d.notes);
   $('#cust-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1528,22 +1463,22 @@ function renderRegsTable() {
   const box = (r, field) =>
     `<input type="checkbox" data-chk="${field}" data-reg="${r.id}" ${r[field] ? 'checked' : ''}
       ${canEdit ? '' : 'disabled'} style="width:17px;height:17px;accent-color:var(--red);cursor:${canEdit ? 'pointer' : 'default'}">`;
-  $('#cd-regs').innerHTML = d.registrations.length ? d.registrations.map(r => {
+  $('#cd-regs').innerHTML = d.enrollments.length ? d.enrollments.map(r => {
     const v = regValidation(r, cust);
-    // courses with session requirements show computed progress (or a scheduling
-    // nudge when nothing is booked yet); others keep the manual checkbox
+    // courses with a recipe show computed progress (or a scheduling nudge when
+    // nothing is booked yet); others keep the manual checkbox
     const cw = r.needs_scheduling
-      ? `<span class="form-flag red" style="font-size:11px;padding:2px 7px" title="No sessions scheduled yet">⚠ Needs scheduling</span>`
+      ? `<span class="form-flag red" style="font-size:11px;padding:2px 7px" title="No sessions chosen yet">⚠ Needs scheduling</span>`
       : r.requirement_progress?.length
         ? r.requirement_progress.map(p => `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}"
-            style="font-size:11px;padding:2px 7px">${SESSION_TYPE_SHORT[p.type] || p.type} ${p.done}/${p.required}</span>`).join(' ')
+            style="font-size:11px;padding:2px 7px">${esc(p.label)} ${p.done}/${p.required}</span>`).join(' ')
         : `<div style="text-align:center">${box(r, 'coursework_complete')}</div>`;
     const sessBtn = r.requirement_progress?.length && canEdit
       ? `<button class="btn btn-sm btn-ghost" data-regsess="${r.id}" data-course="${esc(r.course_name)}">Sessions</button>` : '';
     return `
     <tr data-regrow="${r.id}">
       <td>${esc(r.course_name)}</td>
-      <td>${fmtRange(r.start_date.slice(0,10), r.end_date.slice(0,10))}</td>
+      <td>${fmtDate(r.created_at.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}</td>
       <td><span class="status-pill ${r.status}">${r.status}</span></td>
       <td style="text-align:center">${box(r, 'paid')}</td>
       <td>${cw}</td>
@@ -1553,55 +1488,53 @@ function renderRegsTable() {
       <td>${sessBtn}</td>
     </tr>`;
   }).join('')
-    : '<tr><td colspan="9" style="text-align:center;color:var(--ink-soft);padding:16px">No registrations.</td></tr>';
+    : '<tr><td colspan="9" style="text-align:center;color:var(--ink-soft);padding:16px">No enrollments.</td></tr>';
   $$('#cd-regs [data-chk]').forEach(cb => cb.addEventListener('change', onChecklistToggle));
   $$('#cd-regs [data-regsess]').forEach(b =>
     b.addEventListener('click', () => openRegSessions(+b.dataset.regsess, b.dataset.course)));
 }
 
-// ---------- per-registration session scheduler (in the customer detail) ----------
+// ---------- per-enrollment session scheduler (in the customer detail) ----------
 let cdsRegId = null;
-const ATT_LABELS = { scheduled: 'Scheduled', attended: 'Attended', completed: 'Completed', no_show: 'No-show', excused: 'Excused' };
 
 async function openRegSessions(regId, courseName) {
   cdsRegId = regId;
   $('#cds-title').textContent = `Sessions — ${courseName}`;
   $('#cds-msg').textContent = '';
   $('#cd-sessions-panel').style.display = '';
-  renderRegSessions(await authed(`/api/admin/registrations/${regId}/sessions`));
+  renderRegSessions(await authed(`/api/admin/enrollments/${regId}/sessions`));
   $('#cd-sessions-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function renderRegSessions(data) {
-  const prog = curDetail?.registrations.find(r => r.id === cdsRegId)?.requirement_progress || [];
+  const prog = curDetail?.enrollments.find(r => r.id === cdsRegId)?.requirement_progress || [];
   $('#cds-progress').innerHTML = prog.map(p =>
     `<span class="form-flag ${p.done >= p.required ? 'green' : 'yellow'}" style="margin-right:6px">${
-      SESSION_TYPE_LABEL[p.type] || p.type}: ${p.done}/${p.required}</span>`).join('');
+      esc(p.label)}: ${p.done}/${p.required}</span>`).join('');
   $('#cds-scheduled').innerHTML = data.scheduled.length ? data.scheduled.map(s => `
     <tr>
-      <td><span class="chip">${SESSION_TYPE_LABEL[s.type] || s.type}</span></td>
+      <td><span class="chip">${esc(s.type_name)}</span></td>
       <td>${esc(s.title) || '—'}</td>
-      <td>${fmtDate(s.meeting_date.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}${s.start_time ? ' · ' + fmtTime(s.start_time) : ''}</td>
-      <td>${s.own_class ? '<span style="color:var(--ink-soft)">Own group</span>'
-        : `<span class="form-flag yellow" style="font-size:11px;padding:2px 7px">Makeup · ${esc(s.class_title) || 'other'}</span>`}</td>
-      <td><select data-att="${s.attendance_id}" style="font-family:var(--font-body);font-size:13px;padding:5px 7px;border:1.5px solid var(--line);border-radius:6px;background:#fff">
+      <td>${fmtDate(s.session_date.slice(0,10), { month:'short', day:'numeric', year:'numeric' })}${s.start_time ? ' · ' + s.start_time : ''}</td>
+      <td style="font-size:13px">${esc(s.location) || '—'}</td>
+      <td><select data-att="${s.es_id}" style="font-family:var(--font-body);font-size:13px;padding:5px 7px;border:1.5px solid var(--line);border-radius:6px;background:#fff">
         ${Object.entries(ATT_LABELS).map(([k, l]) => `<option value="${k}" ${s.status === k ? 'selected' : ''}>${l}</option>`).join('')}
       </select></td>
-      <td><button class="btn btn-sm btn-ghost" data-attdel="${s.attendance_id}">Remove</button></td>
+      <td><button class="btn btn-sm btn-ghost" data-attdel="${s.es_id}">Remove</button></td>
     </tr>`).join('')
-    : '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:12px">No sessions scheduled yet.</td></tr>';
+    : '<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:12px">No sessions chosen yet.</td></tr>';
   $('#cds-candidate').innerHTML = data.candidates.length
     ? '<option value="">— choose a session to add —</option>' + data.candidates.map(c =>
-        `<option value="${c.meeting_id}">${c.own_class ? '' : '[Makeup] '}${SESSION_TYPE_LABEL[c.type] || c.type} · ${
-          esc(c.title) || 'session'} · ${fmtDate(c.meeting_date.slice(0,10), { month:'short', day:'numeric' })} · ${
-          c.enrolled}/${c.capacity} full${c.own_class ? '' : ' · ' + esc(c.class_title)}</option>`).join('')
+        `<option value="${c.session_id}">${esc(c.type_name)} · ${esc(c.title) || 'session'} · ${
+          fmtDate(c.session_date.slice(0,10), { month:'short', day:'numeric' })}${c.start_time ? ' ' + c.start_time : ''} · ${
+          c.enrolled}/${c.capacity} full</option>`).join('')
     : '<option value="">— no more sessions available —</option>';
   $$('#cds-scheduled [data-att]').forEach(sel => sel.addEventListener('change', async () => {
-    try { await authed(`/api/admin/attendance/${sel.dataset.att}`, { method: 'PATCH', body: { status: sel.value } }); await afterSessionChange(); }
+    try { await authed(`/api/admin/enrollment-sessions/${sel.dataset.att}`, { method: 'PATCH', body: { status: sel.value } }); await afterSessionChange(); }
     catch (err) { alert(err.message); }
   }));
   $$('#cds-scheduled [data-attdel]').forEach(b => b.addEventListener('click', async () => {
-    await authed(`/api/admin/attendance/${b.dataset.attdel}`, { method: 'DELETE' });
+    await authed(`/api/admin/enrollment-sessions/${b.dataset.attdel}`, { method: 'DELETE' });
     await afterSessionChange();
   }));
 }
@@ -1609,7 +1542,7 @@ function renderRegSessions(data) {
 // after any session change, refresh both the scheduler and the detail table (coursework/validation recompute server-side)
 async function afterSessionChange() {
   const [sessions, detail] = await Promise.all([
-    authed(`/api/admin/registrations/${cdsRegId}/sessions`),
+    authed(`/api/admin/enrollments/${cdsRegId}/sessions`),
     authed(`/api/admin/customers/${detailCustomerId}`),
   ]);
   curDetail = detail;
@@ -1618,21 +1551,11 @@ async function afterSessionChange() {
 }
 
 $('#cds-close').addEventListener('click', () => { $('#cd-sessions-panel').style.display = 'none'; });
-$('#cds-autofill').addEventListener('click', async () => {
-  const msg = $('#cds-msg');
-  msg.style.color = 'var(--ink-soft)'; msg.textContent = 'Filling…';
-  try {
-    const res = await authed(`/api/admin/registrations/${cdsRegId}/autofill`, { method: 'POST' });
-    msg.style.color = 'var(--ok)'; msg.textContent = `Added ${res.added} session${res.added === 1 ? '' : 's'}`;
-    await afterSessionChange();
-    setTimeout(() => { msg.textContent = ''; }, 2500);
-  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
-});
 $('#cds-add').addEventListener('click', async () => {
   const mid = $('#cds-candidate').value, msg = $('#cds-msg');
   if (!mid) return;
   try {
-    await authed(`/api/admin/registrations/${cdsRegId}/sessions`, { method: 'POST', body: { meeting_id: +mid } });
+    await authed(`/api/admin/enrollments/${cdsRegId}/sessions`, { method: 'POST', body: { session_id: +mid } });
     msg.textContent = '';
     await afterSessionChange();
   } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
@@ -1642,7 +1565,7 @@ $('#cds-add').addEventListener('click', async () => {
 function refreshValidationCells() {
   if (!curDetail) return;
   const s = medicalStatus(curDetail.customer);
-  curDetail.registrations.forEach(r => {
+  curDetail.enrollments.forEach(r => {
     const v = regValidation(r, curDetail.customer);
     const vc = $(`[data-valcell="${r.id}"]`);
     if (vc) vc.innerHTML = `<span class="form-flag ${v.color}">${v.label}</span>`;
@@ -1659,9 +1582,9 @@ async function onChecklistToggle(e) {
   const regId = +cb.dataset.reg, field = cb.dataset.chk;
   cb.disabled = true;
   try {
-    await authed(`/api/admin/registrations/${regId}/checklist`, {
+    await authed(`/api/admin/enrollments/${regId}/checklist`, {
       method: 'PATCH', body: { [field]: cb.checked } });
-    const r = curDetail?.registrations.find(x => x.id === regId);
+    const r = curDetail?.enrollments.find(x => x.id === regId);
     if (r) { r[field] = cb.checked; refreshValidationCells(); }
   } catch (err) {
     cb.checked = !cb.checked;   // revert on failure
@@ -1764,7 +1687,7 @@ $('#note-form').addEventListener('submit', async e => {
   try {
     await authed(`/api/admin/customers/${detailCustomerId}/notes`, { method: 'POST', body: {
       kind: f.kind.value, body: f.body.value,
-      session_id: f.session_id.value ? +f.session_id.value : null,
+      enrollment_id: f.session_id.value ? +f.session_id.value : null,
       cert_agency: f.cert_agency.value, cert_number: f.cert_number.value,
       cert_date: f.cert_date.value || null,
       visible_to_customer: f.visible_to_customer.value === 'true',
@@ -1786,19 +1709,19 @@ async function openStaffHistory(staffId, name) {
   $('#sh-title').textContent = `Work History: ${name}`;
   $('#sh-sessions').innerHTML = h.sessions.length ? h.sessions.map(s => `
     <tr>
-      <td>${esc(s.course_name)}</td>
-      <td>${fmtRange(s.start_date.slice(0,10), s.end_date.slice(0,10))}</td>
+      <td>${esc(s.type_name)}</td>
+      <td>${fmtDate(s.session_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })}</td>
       <td>${CREW_ROLES[s.role] || s.role}</td>
-      <td>${s.confirmed_students} confirmed</td>
+      <td>${s.students} student${s.students === 1 ? '' : 's'}</td>
       <td><span class="status-pill ${s.status === 'open' ? 'confirmed' : 'cancelled'}">${s.status}</span></td>
     </tr>`).join('')
-    : '<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:16px">No classes worked yet.</td></tr>';
+    : '<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:16px">No sessions worked yet.</td></tr>';
   $('#sh-students').innerHTML = h.students.length ? h.students.map(st => `
     <tr>
       <td><strong>${esc(st.first_name)} ${esc(st.last_name)}</strong><br>
         <span style="font-size:13px"><a href="mailto:${esc(st.email)}">${esc(st.email)}</a></span></td>
       <td>${esc(st.course_name)}</td>
-      <td>${fmtDate(st.start_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+      <td>${fmtDate(st.session_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })}</td>
       <td><span class="status-pill ${st.status}">${st.status}</span></td>
     </tr>`).join('')
     : '<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:16px">No students yet.</td></tr>';

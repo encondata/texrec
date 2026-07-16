@@ -15,25 +15,35 @@
 <div class="page-hero" data-bubbles>
   <div class="wrap">
     <div class="eyebrow">Schedule</div>
-    <h1 class="rise d1">Class Calendar</h1>
-    <p class="rise d2">Click any class to see details and grab a seat.
-      Registrations are confirmed by our staff within one business day.</p>
+    <h1 class="rise d1" id="cal-hero-title">Session Calendar</h1>
+    <p class="rise d2" id="cal-hero-sub">Every pool night, lake day, and class date — plus our dive trips.
+      To join a course, browse Courses and pick your dates.</p>
   </div>
 </div>
 
 <section class="block">
   <div class="wrap">
+    <!-- enroll mode: pick one session per required slot -->
+    <div id="enroll-panel" class="card" style="display:none;margin-bottom:26px"><div class="pad">
+      <div class="eyebrow">Your selections</div>
+      <div id="enroll-slots"></div>
+      <div id="bundle-row" style="margin-top:12px"></div>
+      <button class="btn btn-red" id="enroll-continue" style="margin-top:14px;width:100%" disabled>Pick every session to continue</button>
+    </div></div>
+
     <div class="cal-head">
       <div class="cal-title" id="cal-title"></div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <select id="kind-filter" style="font-family:var(--font-body);font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
-          <option value="all">Classes &amp; Trips</option>
-          <option value="classes">Classes only</option>
-          <option value="trips">Trips only</option>
-        </select>
-        <select id="course-filter" style="font-family:var(--font-body);font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
-          <option value="">All courses</option>
-        </select>
+        <div id="browse-filters" style="display:flex;gap:12px;flex-wrap:wrap">
+          <select id="kind-filter" style="font-family:var(--font-body);font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
+            <option value="all">Sessions &amp; Trips</option>
+            <option value="sessions">Sessions only</option>
+            <option value="trips">Trips only</option>
+          </select>
+          <select id="type-filter" style="font-family:var(--font-body);font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px;background:#fff">
+            <option value="">All session types</option>
+          </select>
+        </div>
         <div class="cal-nav">
           <button id="prev" aria-label="Previous month">‹</button>
           <button class="today-btn" id="today">Today</button>
@@ -43,13 +53,13 @@
     </div>
     <div class="cal-grid" id="cal-grid"></div>
     <div class="cal-legend" id="cal-legend">
-      <span class="key"><span class="swatch"></span> Class</span>
+      <span class="key"><span class="swatch"></span> Session</span>
       <span class="key"><span class="swatch trip"></span> Trip</span>
     </div>
 
     <div class="sec-head" style="margin:52px 0 22px">
       <div class="eyebrow">This Month</div>
-      <h2 style="font-size:32px" id="list-title">Classes</h2>
+      <h2 style="font-size:32px" id="list-title"></h2>
     </div>
     <div class="session-list" id="session-list"></div>
   </div>

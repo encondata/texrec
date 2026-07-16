@@ -144,19 +144,20 @@
 
     const sessions = await api('/api/sessions');
     $('#home-sessions').innerHTML = sessions.slice(0, 4).map(s => {
-      const left = s.capacity - s.registered;
+      const left = s.capacity - s.enrolled;
+      const d = s.session_date.slice(0, 10);
       return `
       <div class="session-row reveal">
         <div class="session-date">
-          <span class="mon">${fmtDate(s.start_date, { month: 'short' }).toUpperCase()}</span>
-          <span class="day">${new Date(s.start_date + 'T12:00:00').getDate()}</span>
+          <span class="mon">${fmtDate(d, { month: 'short' }).toUpperCase()}</span>
+          <span class="day">${new Date(d + 'T12:00:00').getDate()}</span>
         </div>
         <div>
-          <h3>${s.title || s.course_name}</h3>
-          <div class="det">${fmtRange(s.start_date, s.end_date)} · ${s.start_time} · ${s.location}</div>
-          <div class="seats">${left > 0 ? `${left} seat${left === 1 ? '' : 's'} left` : 'Full — waitlist open'}</div>
+          <h3>${s.title || s.type_name}</h3>
+          <div class="det">${fmtDate(d, { weekday: 'long', month: 'long', day: 'numeric' })}${s.start_time ? ' · ' + s.start_time : ''}${s.location ? ' · ' + esc(s.location) : ''}</div>
+          <div class="seats">${left > 0 ? `${left} spot${left === 1 ? '' : 's'} left` : 'Full'}</div>
         </div>
-        <div class="act"><a class="btn btn-sm btn-red" href="/calendar?session=${s.id}">Register</a></div>
+        <div class="act"><a class="btn btn-sm btn-red" href="/calendar">See Calendar</a></div>
       </div>`;
     }).join('');
 

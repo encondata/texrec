@@ -317,6 +317,7 @@ section.block.alt { background: var(--sand); }
 .cal-legend .key { display: inline-flex; align-items: center; gap: 7px; }
 .cal-legend .swatch { width: 13px; height: 13px; border-radius: 3px; border-left: 3px solid var(--red); background: #fdecec; }
 .cal-legend .swatch.trip { border-left-color: var(--ocean); background: #e2f1f6; }
+.cal-evt.picked { background: #0f6d3d; color: #fff; border-color: #0f6d3d; font-weight: 700; }
 
 /* medical / forms status flags + registration validation pills */
 .form-flag {

@@ -4,12 +4,17 @@ DROP TABLE IF EXISTS session_media CASCADE;
 DROP TABLE IF EXISTS customer_notes CASCADE;
 DROP TABLE IF EXISTS customer_tokens CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS bundle_sessions CASCADE;
+DROP TABLE IF EXISTS bundles CASCADE;
+DROP TABLE IF EXISTS enrollment_sessions CASCADE;
+DROP TABLE IF EXISTS enrollments CASCADE;
 DROP TABLE IF EXISTS session_staff CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS course_slots CASCADE;
+DROP TABLE IF EXISTS session_types CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS dive_sites CASCADE;
 DROP TABLE IF EXISTS photos CASCADE;
-DROP TABLE IF EXISTS registrations CASCADE;
-DROP TABLE IF EXISTS class_sessions CASCADE;
 DROP TABLE IF EXISTS courses CASCADE;
 DROP TABLE IF EXISTS trips CASCADE;
 DROP TABLE IF EXISTS staff CASCADE;
@@ -61,25 +66,52 @@ CREATE TABLE staff (
   active  BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-CREATE TABLE class_sessions (
-  id            SERIAL PRIMARY KEY,
-  course_id     INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-  title       TEXT,                         -- optional custom class name (falls back to course name)
-  start_date  DATE NOT NULL,
-  end_date    DATE NOT NULL,
-  start_time  TIME NOT NULL DEFAULT '09:00',
-  location    TEXT NOT NULL,
-  capacity    INTEGER NOT NULL DEFAULT 8,
-  status      TEXT NOT NULL DEFAULT 'open',  -- open | full | cancelled | completed
-  notes       TEXT,
-  CONSTRAINT valid_status CHECK (status IN ('open','full','cancelled','completed'))
+-- shared session-type vocabulary (Pool, Lake Day 1, …) referenced by courses & sessions
+CREATE TABLE session_types (
+  id     SERIAL PRIMARY KEY,
+  name   TEXT NOT NULL,
+  slug   TEXT NOT NULL UNIQUE,
+  sort   INTEGER NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT TRUE
 );
-CREATE INDEX idx_sessions_start ON class_sessions(start_date);
+INSERT INTO session_types (name, slug, sort) VALUES
+  ('Academics', 'academics', 10),
+  ('Pool', 'pool', 20),
+  ('Lake Day 1', 'lake-day-1', 30),
+  ('Lake Day 2', 'lake-day-2', 40);
 
--- who is working a class, and in what capacity
+-- a course's ordered recipe of required sessions (one row per required slot)
+CREATE TABLE course_slots (
+  id              SERIAL PRIMARY KEY,
+  course_id       INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  session_type_id INTEGER NOT NULL REFERENCES session_types(id) ON DELETE CASCADE,
+  sort            INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_course_slots_course ON course_slots(course_id);
+
+-- standalone dated sessions shown on the calendar (not tied to any single course)
+CREATE TABLE sessions (
+  id              SERIAL PRIMARY KEY,
+  session_type_id INTEGER NOT NULL REFERENCES session_types(id) ON DELETE RESTRICT,
+  title           TEXT,
+  session_date    DATE NOT NULL,
+  start_time      TIME,
+  end_time        TIME,
+  location        TEXT,
+  capacity        INTEGER NOT NULL DEFAULT 6,
+  notes           TEXT,
+  status          TEXT NOT NULL DEFAULT 'open',   -- open | cancelled | completed
+  active          BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_session_status CHECK (status IN ('open','cancelled','completed'))
+);
+CREATE INDEX idx_sessions_date ON sessions(session_date);
+CREATE INDEX idx_sessions_type ON sessions(session_type_id);
+
+-- who is working a session, and in what capacity
 CREATE TABLE session_staff (
   id         SERIAL PRIMARY KEY,
-  session_id INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE,
+  session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   staff_id   INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
   role       TEXT NOT NULL DEFAULT 'instructor',
   UNIQUE (session_id, staff_id),
@@ -112,9 +144,10 @@ CREATE TABLE customer_tokens (
   expires_at  TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE registrations (
+-- course-level enrollment (a customer signed up for a course)
+CREATE TABLE enrollments (
   id          SERIAL PRIMARY KEY,
-  session_id  INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE,
+  course_id   INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
   customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
   first_name  TEXT NOT NULL,
   last_name   TEXT NOT NULL,
@@ -124,55 +157,41 @@ CREATE TABLE registrations (
   notes       TEXT,
   status      TEXT NOT NULL DEFAULT 'pending', -- pending | confirmed | cancelled | waitlist
   paid                BOOLEAN NOT NULL DEFAULT FALSE, -- verification checklist ↓
-  coursework_complete BOOLEAN NOT NULL DEFAULT FALSE,
   welcome_packet_sent BOOLEAN NOT NULL DEFAULT FALSE,
+  coursework_complete BOOLEAN NOT NULL DEFAULT FALSE, -- manual fallback for courses without a recipe
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT valid_reg_status CHECK (status IN ('pending','confirmed','cancelled','waitlist'))
+  CONSTRAINT valid_enroll_status CHECK (status IN ('pending','confirmed','cancelled','waitlist'))
 );
-CREATE INDEX idx_reg_session ON registrations(session_id);
-CREATE INDEX idx_reg_status ON registrations(status);
+CREATE INDEX idx_enroll_course ON enrollments(course_id);
+CREATE INDEX idx_enroll_customer ON enrollments(customer_id);
 
--- completion rubric: how many of each session type a course requires
-CREATE TABLE course_requirements (
-  id             SERIAL PRIMARY KEY,
-  course_id      INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-  session_type   TEXT NOT NULL,                 -- academics | pool | open_water | other
-  required_count INTEGER NOT NULL DEFAULT 1,
-  sort           INTEGER NOT NULL DEFAULT 0,
-  UNIQUE (course_id, session_type)
+-- the sessions a customer selected for their enrollment + attendance status.
+-- Completion rolls up against the course's course_slots recipe.
+CREATE TABLE enrollment_sessions (
+  id            SERIAL PRIMARY KEY,
+  enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+  session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  status        TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | attended | completed | no_show | excused
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (enrollment_id, session_id),
+  CONSTRAINT valid_es_status CHECK (status IN ('scheduled','attended','completed','no_show','excused'))
 );
-CREATE INDEX idx_reqs_course ON course_requirements(course_id);
+CREATE INDEX idx_es_enroll ON enrollment_sessions(enrollment_id);
+CREATE INDEX idx_es_session ON enrollment_sessions(session_id);
 
--- dated events under a class (UI: "Sessions") — each with its own roster/capacity
-CREATE TABLE class_meetings (
-  id           SERIAL PRIMARY KEY,
-  session_id   INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE, -- parent class
-  type         TEXT NOT NULL DEFAULT 'other',   -- academics | pool | open_water | other
-  title        TEXT,                            -- optional label, e.g. "Lake Day 2"
-  meeting_date DATE NOT NULL,
-  start_time   TIME,
-  location     TEXT,
-  capacity     INTEGER NOT NULL DEFAULT 6,
-  notes        TEXT,
-  sort         INTEGER NOT NULL DEFAULT 0,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+-- optional staff-curated bundles: a preset group of sessions covering a course's recipe
+CREATE TABLE bundles (
+  id        SERIAL PRIMARY KEY,
+  course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  name      TEXT NOT NULL,
+  active    BOOLEAN NOT NULL DEFAULT TRUE,
+  sort      INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX idx_meetings_session ON class_meetings(session_id);
-CREATE INDEX idx_meetings_date ON class_meetings(meeting_date);
-
--- who is scheduled for / completed which session; meeting_id may belong to another
--- class, enabling cross-group makeups. Completion rolls up against course_requirements.
-CREATE TABLE meeting_attendance (
-  id              SERIAL PRIMARY KEY,
-  meeting_id      INTEGER NOT NULL REFERENCES class_meetings(id) ON DELETE CASCADE,
-  registration_id INTEGER NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
-  status          TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | attended | completed | no_show | excused
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (meeting_id, registration_id),
-  CONSTRAINT valid_attendance_status CHECK (status IN ('scheduled','attended','completed','no_show','excused'))
+CREATE TABLE bundle_sessions (
+  bundle_id  INTEGER NOT NULL REFERENCES bundles(id) ON DELETE CASCADE,
+  session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  PRIMARY KEY (bundle_id, session_id)
 );
-CREATE INDEX idx_attendance_meeting ON meeting_attendance(meeting_id);
-CREATE INDEX idx_attendance_reg ON meeting_attendance(registration_id);
 
 CREATE TABLE admin_users (
   id            SERIAL PRIMARY KEY,
@@ -253,7 +272,7 @@ CREATE TABLE customer_notes (
   id          SERIAL PRIMARY KEY,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   author_id   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
-  session_id  INTEGER REFERENCES class_sessions(id) ON DELETE SET NULL,
+  enrollment_id INTEGER REFERENCES enrollments(id) ON DELETE SET NULL, -- optional "related course"
   kind        TEXT NOT NULL DEFAULT 'note',   -- note | certification
   body        TEXT NOT NULL,
   cert_agency TEXT,                            -- certification-only fields
@@ -265,11 +284,11 @@ CREATE TABLE customer_notes (
 );
 CREATE INDEX idx_notes_customer ON customer_notes(customer_id);
 
--- private class media: photos/documents for a session, visible to assigned staff
--- and to customers with a confirmed registration. Files live OUTSIDE public/.
+-- private session media: photos/documents for a session, visible to assigned staff
+-- and to customers enrolled in that session. Files live OUTSIDE public/.
 CREATE TABLE session_media (
   id            SERIAL PRIMARY KEY,
-  session_id    INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE,
+  session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   filename      TEXT NOT NULL,
   original_name TEXT NOT NULL,
   mime          TEXT NOT NULL,
