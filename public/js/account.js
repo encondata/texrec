@@ -124,9 +124,16 @@ async function enterDash() {
     </div>`).join('')
     : '<p style="color:var(--ink-soft)">Nothing here yet — your instructor will add certifications and notes as you train.</p>';
 
-  // (self-service photo upload is managed from each session; hidden on the account overview)
+  // photo upload — pick from the sessions this customer is enrolled in
   const photoForm = $('#my-photo-form');
-  if (photoForm) photoForm.style.display = 'none';
+  if (photoForm) {
+    const sessions = me.sessions || [];
+    photoForm.style.display = sessions.length ? 'flex' : 'none';
+    if (sessions.length) {
+      photoForm.elements.session_id.innerHTML = sessions.map(s =>
+        `<option value="${s.id}">${esc(s.title || s.type_name)} · ${fmtDate(s.session_date.slice(0,10), { month: 'short', day: 'numeric', year: 'numeric' })}</option>`).join('');
+    }
+  }
 
   // media
   $('#my-media').innerHTML = me.media.length ? me.media.map(m => {
@@ -146,7 +153,7 @@ async function enterDash() {
       </div>
     </div>`;
   }).join('')
-    : '<p style="color:var(--ink-soft)">Photos and files from your confirmed classes will show up here.</p>';
+    : '<p style="color:var(--ink-soft)">Photos and files from your sessions will show up here.</p>';
   $$('#my-media [data-mymedia-del]').forEach(b => b.addEventListener('click', async e => {
     e.stopPropagation();
     if (!confirm('Delete this photo?')) return;

@@ -1684,10 +1684,18 @@ app.get('/api/customer/me', requireCustomer, wrap(async (req, res) => {
             d.uploaded_by_customer, a.name AS uploaded_by_name
      FROM customer_documents d LEFT JOIN admin_users a ON a.id = d.uploaded_by_admin
      WHERE d.customer_id = $1 ORDER BY d.created_at DESC`, [req.customer.id]);
+  // the distinct sessions this customer is enrolled in — used by the photo uploader
+  const { rows: sessions } = await pool.query(
+    `SELECT DISTINCT s.id, s.title, s.session_date, t.name AS type_name
+     FROM enrollment_sessions es
+     JOIN enrollments e ON e.id = es.enrollment_id AND e.customer_id = $1 AND e.status <> 'cancelled'
+     JOIN sessions s ON s.id = es.session_id
+     JOIN session_types t ON t.id = s.session_type_id
+     ORDER BY s.session_date`, [req.customer.id]);
   const { rows: [extra] } = await pool.query(
     'SELECT avatar_filename IS NOT NULL AS has_avatar, share_contact FROM customers WHERE id=$1', [req.customer.id]);
   res.json({ customer: { ...req.customer, has_avatar: extra.has_avatar, share_contact: extra.share_contact },
-             enrollments, notes, media, documents });
+             enrollments, sessions, notes, media, documents });
 }));
 
 // ---------- customer self-service: choose their enrollment's sessions ----------
