@@ -28,6 +28,8 @@
           <input id="l-pass" name="password" type="password" required autocomplete="current-password"></div>
         <button class="btn btn-red" type="submit" style="width:100%">Sign In</button>
       </form>
+      <p style="text-align:center;margin-top:14px;font-size:14px">
+        <a href="#" id="forgot-link" style="color:var(--ink-soft)">Forgot your password?</a></p>
     </div>
   </div>
 </div>
@@ -74,6 +76,7 @@
       </div>
       <button class="btn btn-sm btn-ghost" id="ack-all">Acknowledge All</button>
     </div>
+    <div id="reset-requests"></div>
     <div id="notif-list" class="notif-list"></div>
   </div>
 
@@ -692,13 +695,14 @@ placeholder='[
   <!-- accounts tab -->
   <div id="tab-accounts" style="display:none">
     <div class="card" style="margin-bottom:26px"><div class="pad">
-      <h3 style="margin-bottom:14px">Add an admin account</h3>
+      <h3 style="margin-bottom:14px" id="account-form-title">Add an admin account</h3>
       <form id="account-form">
+        <input type="hidden" name="id">
         <div class="field-row">
           <div class="field"><label>Name *</label><input name="name" required></div>
           <div class="field"><label>Email *</label><input name="email" type="email" required></div>
         </div>
-        <div class="field"><label>Password * <span style="font-weight:400;text-transform:none">(min 8 characters)</span></label>
+        <div class="field"><label id="account-pw-label">Password * <span style="font-weight:400;text-transform:none">(min 8 characters)</span></label>
           <input name="password" type="password" required minlength="8" autocomplete="new-password"></div>
         <div class="field-row">
           <div class="field"><label>Role</label>
@@ -711,7 +715,8 @@ placeholder='[
           <div class="field"><label>Linked staff member <span style="font-weight:400;text-transform:none">(required for instructors)</span></label>
             <select name="staff_id" id="acct-staff"><option value="">— None —</option></select></div>
         </div>
-        <button class="btn btn-sm btn-red" type="submit">Create Account</button>
+        <button class="btn btn-sm btn-red" type="submit" id="account-submit">Create Account</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="account-cancel" style="display:none;margin-left:8px">Cancel Edit</button>
         <span id="account-msg" style="margin-left:12px;font-weight:600"></span>
       </form>
     </div></div>
@@ -724,7 +729,25 @@ placeholder='[
       </table>
     </div>
     <p style="font-size:13.5px;color:var(--ink-soft);margin-top:14px">
-      Resetting a password signs that person out everywhere. You can't delete your own account or the last remaining one.</p>
+      Resetting a password signs that person out everywhere and makes them choose a new one on next sign-in. You can't delete your own account or the last remaining one.</p>
+  </div>
+
+  <!-- forced password change after an admin reset -->
+  <div class="modal-back" id="force-pw-back">
+    <div class="modal" role="dialog" aria-modal="true" style="max-width:420px">
+      <div class="m-head"><h3>Set a new password</h3>
+        <div class="sub">Your password was reset by an administrator — please choose a new one to continue.</div></div>
+      <div class="m-body">
+        <div class="form-msg" id="force-pw-msg"></div>
+        <form id="force-pw-form">
+          <div class="field"><label>New password <span style="font-weight:400;text-transform:none">(min 8 characters)</span></label>
+            <input name="new_password" type="password" required minlength="8" autocomplete="new-password"></div>
+          <div class="field"><label>Confirm new password</label>
+            <input name="confirm_password" type="password" required minlength="8" autocomplete="new-password"></div>
+          <button class="btn btn-red" type="submit" style="width:100%">Set Password &amp; Continue</button>
+        </form>
+      </div>
+    </div>
   </div>
 
   <!-- profile tab -->

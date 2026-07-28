@@ -36,6 +36,17 @@ $('#login-form').addEventListener('submit', async e => {
   }
 });
 
+$('#forgot-link').addEventListener('click', async e => {
+  e.preventDefault();
+  const msg = $('#login-msg');
+  const email = prompt('Enter your account email and our team will reset your password:');
+  if (!email) return;
+  try {
+    const res = await api('/api/password-reset-requests', { method: 'POST', body: { email } });
+    msg.className = 'form-msg ok'; msg.textContent = res.message;
+  } catch (err) { msg.className = 'form-msg err'; msg.textContent = err.message; }
+});
+
 $('#logout').addEventListener('click', async () => {
   try { await cauthed('/api/customer/logout', { method: 'POST' }); } catch {}
   localStorage.removeItem('texrec_customer_token'); ctoken = null;

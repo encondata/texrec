@@ -82,7 +82,7 @@ async function requireAdmin(req, res, next) {
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   const { rows } = await pool.query(
-    `SELECT a.id, a.email, a.name, a.role, a.staff_id FROM admin_tokens t
+    `SELECT a.id, a.email, a.name, a.role, a.staff_id, a.must_change_password FROM admin_tokens t
      JOIN admin_users a ON a.id = t.admin_id
      WHERE t.token = $1 AND t.expires_at > now()`, [token]);
   if (!rows.length) return res.status(401).json({ error: 'Session expired' });
@@ -145,6 +145,15 @@ const wrap = fn => (req, res) => fn(req, res).catch(err => {
 function hashPassword(pw) {
   const salt = crypto.randomBytes(16).toString('hex');
   return `${salt}:${crypto.scryptSync(pw, salt, 64).toString('hex')}`;
+}
+
+// a short, human-copyable temporary password (unambiguous alphanumerics)
+function randomPassword(len = 8) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const bytes = crypto.randomBytes(len);
+  let out = '';
+  for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
+  return out;
 }
 
 const notify = (type, title, body, tab) => pool.query(
@@ -319,6 +328,33 @@ app.post('/api/enrollments', wrap(async (req, res) => {
   });
 }));
 
+// forgot password: a staff account or customer asks staff to reset them. Always
+// responds the same way (no email enumeration); only queues a request if the email exists.
+app.post('/api/password-reset-requests', wrap(async (req, res) => {
+  const email = (req.body?.email || '').trim();
+  const generic = { ok: true, message: 'If an account exists for that email, our team will reset it and reach out with a new password.' };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.json(generic);
+  let kind = null, account = null;
+  const { rows: [adm] } = await pool.query('SELECT id, name, email FROM admin_users WHERE lower(email)=lower($1)', [email]);
+  if (adm) { kind = 'admin'; account = adm; }
+  else {
+    const { rows: [cust] } = await pool.query(
+      "SELECT id, first_name || ' ' || last_name AS name, email FROM customers WHERE lower(email)=lower($1)", [email]);
+    if (cust) { kind = 'customer'; account = cust; }
+  }
+  if (!account) return res.json(generic);
+  const { rows: [open] } = await pool.query(
+    "SELECT 1 FROM password_resets WHERE kind=$1 AND account_id=$2 AND status='open'", [kind, account.id]);
+  if (!open) {
+    await pool.query('INSERT INTO password_resets (kind, account_id, email, name) VALUES ($1,$2,$3,$4)',
+      [kind, account.id, account.email, account.name]);
+    await notify('system', `Password reset requested: ${account.name}`,
+      `${account.name} <${account.email}> (${kind === 'admin' ? 'staff account' : 'customer'}) asked to reset their password. Open the Inbox to reset it and copy the new password to them.`,
+      'inbox');
+  }
+  res.json(generic);
+}));
+
 app.get('/api/sites', wrap(async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id,name,location,blurb,website,services,difficulty,lat,lng FROM dive_sites WHERE active ORDER BY sort, id');
@@ -350,7 +386,8 @@ app.post('/api/admin/login', wrap(async (req, res) => {
   await pool.query(
     `INSERT INTO admin_tokens (token, admin_id, expires_at) VALUES ($1,$2, now() + make_interval(hours => $3))`,
     [token, admin.id, ADMIN_TOKEN_HOURS]);
-  res.json({ token, name: admin.name, email: admin.email, role: admin.role });
+  res.json({ token, name: admin.name, email: admin.email, role: admin.role,
+             must_change: admin.must_change_password });
 }));
 
 app.post('/api/admin/logout', requireAdmin, wrap(async (req, res) => {
@@ -889,6 +926,9 @@ app.patch('/api/admin/accounts/:id', requireAdmin, allow('admin'), wrap(async (r
   if (password) {
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     vals.push(hashPassword(password)); sets.push(`password_hash=$${vals.length}`);
+    // an admin-set password is temporary — force the user to choose their own on next sign-in
+    // (unless the admin is resetting their own account, which is a deliberate self-change)
+    sets.push(`must_change_password=${+req.params.id === req.admin.id ? 'FALSE' : 'TRUE'}`);
   }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
   vals.push(req.params.id);
@@ -917,6 +957,42 @@ app.delete('/api/admin/accounts/:id', requireAdmin, allow('admin'), wrap(async (
   await notify('system', `Admin account removed: ${a.name}`,
     `${req.admin.name} removed the admin account for ${a.name} <${a.email}>.`, 'accounts');
   res.json({ ok: true });
+}));
+
+// open "forgot password" requests (staff can see/handle them)
+app.get('/api/admin/password-resets', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT id, kind, account_id, email, name, requested_at FROM password_resets WHERE status='open' ORDER BY requested_at");
+  res.json(rows);
+}));
+
+// reset the requested account to a random temporary password; return it to show on screen
+app.post('/api/admin/password-resets/:id/reset', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  const { rows: [pr] } = await pool.query('SELECT * FROM password_resets WHERE id=$1', [req.params.id]);
+  if (!pr) return res.status(404).json({ error: 'Request not found.' });
+  if (pr.status === 'done') return res.status(409).json({ error: 'That request was already handled.' });
+  const pw = randomPassword(8);
+  if (pr.kind === 'admin') {
+    const { rows: [target] } = await pool.query('SELECT role FROM admin_users WHERE id=$1', [pr.account_id]);
+    if (!target) return res.status(404).json({ error: 'That account no longer exists.' });
+    if (!['admin', 'superadmin'].includes(req.admin.role)) {
+      return res.status(403).json({ error: 'Only an admin can reset a staff/admin account.' });
+    }
+    if (target.role === 'superadmin' && req.admin.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Only a super admin can reset a super admin account.' });
+    }
+    await pool.query('UPDATE admin_users SET password_hash=$1, must_change_password=TRUE WHERE id=$2',
+      [hashPassword(pw), pr.account_id]);
+    await pool.query('DELETE FROM admin_tokens WHERE admin_id=$1', [pr.account_id]);
+  } else {
+    const { rows: [cust] } = await pool.query('SELECT 1 FROM customers WHERE id=$1', [pr.account_id]);
+    if (!cust) return res.status(404).json({ error: 'That customer no longer exists.' });
+    await pool.query('UPDATE customers SET password_hash=$1 WHERE id=$2', [hashPassword(pw), pr.account_id]);
+    await pool.query('DELETE FROM customer_tokens WHERE customer_id=$1', [pr.account_id]);
+  }
+  await pool.query("UPDATE password_resets SET status='done', resolved_by=$1, resolved_at=now() WHERE id=$2",
+    [req.admin.id, pr.id]);
+  res.json({ password: pw, name: pr.name, email: pr.email, kind: pr.kind });
 }));
 
 // ---------- admin: dive sites ----------
@@ -1750,15 +1826,19 @@ app.patch('/api/admin/me', requireAdmin, wrap(async (req, res) => {
 
 app.post('/api/admin/me/password', requireAdmin, wrap(async (req, res) => {
   const { current_password, new_password } = req.body || {};
-  if (!current_password || !new_password) {
-    return res.status(400).json({ error: 'Current and new password are required.' });
-  }
+  if (!new_password) return res.status(400).json({ error: 'A new password is required.' });
   if (new_password.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
-  const { rows: [me] } = await pool.query('SELECT password_hash FROM admin_users WHERE id=$1', [req.admin.id]);
-  if (!verifyPassword(current_password, me.password_hash)) {
-    return res.status(401).json({ error: 'Current password is incorrect.' });
+  const { rows: [me] } = await pool.query(
+    'SELECT password_hash, must_change_password FROM admin_users WHERE id=$1', [req.admin.id]);
+  // normal change requires the current password; a forced post-reset change does not
+  // (the user just proved identity by signing in with the temporary password)
+  if (!me.must_change_password) {
+    if (!current_password) return res.status(400).json({ error: 'Current and new password are required.' });
+    if (!verifyPassword(current_password, me.password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
   }
-  await pool.query('UPDATE admin_users SET password_hash=$1 WHERE id=$2',
+  await pool.query('UPDATE admin_users SET password_hash=$1, must_change_password=FALSE WHERE id=$2',
     [hashPassword(new_password), req.admin.id]);
   // sign out every other session for this account, keep this one
   await pool.query('DELETE FROM admin_tokens WHERE admin_id=$1 AND token<>$2',

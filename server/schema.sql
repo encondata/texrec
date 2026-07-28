@@ -200,6 +200,7 @@ CREATE TABLE admin_users (
   password_hash TEXT NOT NULL,               -- scrypt: salt:hex
   role          TEXT NOT NULL DEFAULT 'admin', -- superadmin | admin | staff | instructor
   staff_id      INTEGER REFERENCES staff(id) ON DELETE SET NULL, -- links portal login to a staff record
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE, -- set on admin reset; cleared when the user picks a new one
   CONSTRAINT valid_admin_role CHECK (role IN ('superadmin','admin','staff','instructor'))
 );
 
@@ -266,6 +267,22 @@ CREATE TABLE notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_notif_unacked ON notifications(created_at) WHERE acked_at IS NULL;
+
+-- self-service password reset requests from the login forms (staff accounts + customers)
+CREATE TABLE password_resets (
+  id           SERIAL PRIMARY KEY,
+  kind         TEXT NOT NULL,                 -- 'admin' (staff account) | 'customer'
+  account_id   INTEGER NOT NULL,              -- admin_users.id or customers.id, per kind
+  email        TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'open',  -- open | done
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_by  INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+  resolved_at  TIMESTAMPTZ,
+  CONSTRAINT valid_pr_kind CHECK (kind IN ('admin','customer')),
+  CONSTRAINT valid_pr_status CHECK (status IN ('open','done'))
+);
+CREATE INDEX idx_password_resets_open ON password_resets(requested_at) WHERE status = 'open';
 
 -- instructor/staff notes and certification records about a customer
 CREATE TABLE customer_notes (

@@ -34,6 +34,17 @@ $('#logout').addEventListener('click', async () => {
   show('login');
 });
 
+$('#forgot-link').addEventListener('click', async e => {
+  e.preventDefault();
+  const msg = $('#login-msg');
+  const email = prompt('Enter your account email and our team will reset your password:');
+  if (!email) return;
+  try {
+    const res = await api('/api/password-reset-requests', { method: 'POST', body: { email } });
+    msg.className = 'form-msg ok'; msg.textContent = res.message;
+  } catch (err) { msg.className = 'form-msg err'; msg.textContent = err.message; }
+});
+
 // ---------- enrollments ----------
 async function loadRegs() {
   let regs;
@@ -527,7 +538,46 @@ function updateBadges(count) {
   }
 }
 
+async function renderResetRequests() {
+  let reqs = [];
+  try { reqs = await authed('/api/admin/password-resets'); } catch { return; }
+  const box = $('#reset-requests');
+  if (!reqs.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="card" style="box-shadow:none;border:1.5px solid var(--warn);margin-bottom:16px"><div class="pad" style="padding:14px 18px">
+    <h4 style="margin:0 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--warn)">🔑 Password reset requests</h4>
+    ${reqs.map(r => `
+      <div data-prrow="${r.id}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)">
+        <div><strong>${esc(r.name)}</strong> <span class="chip" style="font-size:10px">${r.kind === 'admin' ? 'staff' : 'customer'}</span><br>
+          <span style="font-size:13.5px;color:var(--ink-soft)">${esc(r.email)} · asked ${ago(r.requested_at)}</span></div>
+        <div class="pr-action"><button class="btn btn-sm btn-red" data-pr-reset="${r.id}">Reset &amp; reveal password</button></div>
+      </div>`).join('')}
+  </div></div>`;
+  $$('#reset-requests [data-pr-reset]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const res = await authed(`/api/admin/password-resets/${b.dataset.prReset}/reset`, { method: 'POST' });
+      const cell = b.closest('[data-prrow]').querySelector('.pr-action');
+      cell.innerHTML = `<div style="text-align:right">
+        <div style="font-size:12px;color:var(--ink-soft)">New temporary password — copy &amp; send it:</div>
+        <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:3px">
+          <code style="font-size:16px;font-weight:700;background:var(--sand);padding:4px 10px;border-radius:6px;letter-spacing:1px">${esc(res.password)}</code>
+          <button class="btn btn-sm btn-ghost" data-pr-copy="${esc(res.password)}">Copy</button></div></div>`;
+      cell.querySelector('[data-pr-copy]').addEventListener('click', ev => {
+        navigator.clipboard?.writeText(ev.target.dataset.prCopy);
+        ev.target.textContent = 'Copied ✓';
+      });
+      updateBadgesFromServer();
+    } catch (err) { b.disabled = false; alert(err.message); }
+  }));
+}
+
+// refresh the bell/inbox counts without a full inbox re-render (keeps a revealed password visible)
+async function updateBadgesFromServer() {
+  try { const r = await authed('/api/admin/notifications?unacked=1'); updateBadges(r.unacked); } catch {}
+}
+
 async function loadInbox() {
+  renderResetRequests();
   const res = await authed(`/api/admin/notifications${inboxFilter === 'unacked' ? '?unacked=1' : ''}`);
   updateBadges(res.unacked);
   $('#notif-list').innerHTML = res.notifications.length ? res.notifications.map(n => `
@@ -586,9 +636,12 @@ let me = null;
 
 const ACCT_ROLE_LABEL = { superadmin: 'Super Admin', admin: 'Admin', staff: 'Staff', instructor: 'Instructor' };
 
+let accountCache = [];
+
 async function loadAccounts() {
   const [accounts, staff] = await Promise.all([
     authed('/api/admin/accounts'), authed('/api/admin/staff')]);
+  accountCache = accounts;
   $('#acct-staff').innerHTML = '<option value="">— None —</option>' +
     staff.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
 
@@ -600,27 +653,32 @@ async function loadAccounts() {
         ${a.staff_name ? `<br><span style="font-size:12px;color:var(--ink-soft)">→ ${esc(a.staff_name)}</span>` : ''}</td>
       <td>${a.last_login ? ago(a.last_login) : 'Never'}</td>
       <td><div class="row-actions">
+        <button class="btn btn-sm btn-ghost" data-acct-edit="${a.id}">Edit</button>
         <button class="btn btn-sm btn-ghost" data-acct-pw="${a.id}">Reset Password</button>
-        ${me && a.id === me.id ? '' : `<button class="btn btn-sm btn-ghost" data-acct-role="${a.id}" data-role="${a.role}">Change Role</button>
-        <button class="btn btn-sm btn-ghost" data-acct-del="${a.id}" data-name="${esc(a.name)}">Delete</button>`}
+        ${me && a.id === me.id ? '' : `<button class="btn btn-sm btn-ghost" data-acct-del="${a.id}" data-name="${esc(a.name)}">Delete</button>`}
       </div></td>
     </tr>`).join('');
 
-  $$('#account-rows [data-acct-role]').forEach(b => b.addEventListener('click', async () => {
-    const next = prompt(`Role for this account — superadmin, admin, staff, or instructor?`, b.dataset.role);
-    if (!next || !['superadmin', 'admin', 'staff', 'instructor'].includes(next)) return;
-    try {
-      await authed(`/api/admin/accounts/${b.dataset.acctRole}`, { method: 'PATCH', body: { role: next } });
-      loadAccounts();
-    } catch (err) { alert(err.message); }
+  $$('#account-rows [data-acct-edit]').forEach(b => b.addEventListener('click', () => {
+    const a = accountCache.find(x => x.id === +b.dataset.acctEdit);
+    const f = $('#account-form').elements;
+    f.id.value = a.id;
+    f.name.value = a.name; f.email.value = a.email; f.role.value = a.role;
+    f.staff_id.value = a.staff_id || '';
+    f.password.value = ''; f.password.required = false;
+    $('#account-pw-label').innerHTML = 'New password <span style="font-weight:400;text-transform:none">(leave blank to keep current)</span>';
+    $('#account-form-title').textContent = `Editing: ${a.name}`;
+    $('#account-submit').textContent = 'Save Changes';
+    $('#account-cancel').style.display = '';
+    $('#account-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }));
 
   $$('#account-rows [data-acct-pw]').forEach(b => b.addEventListener('click', async () => {
-    const pw = prompt('New password (min 8 characters):');
+    const pw = prompt('Temporary password (min 8 characters). The user must choose their own on next sign-in:');
     if (!pw) return;
     try {
       await authed(`/api/admin/accounts/${b.dataset.acctPw}`, { method: 'PATCH', body: { password: pw } });
-      alert('Password reset. That account has been signed out everywhere.');
+      alert('Password reset. They\'ve been signed out and must set a new password when they sign back in.');
     } catch (err) { alert(err.message); }
   }));
   $$('#account-rows [data-acct-del]').forEach(b => b.addEventListener('click', async () => {
@@ -632,19 +690,58 @@ async function loadAccounts() {
   }));
 }
 
+function resetAccountForm() {
+  const f = $('#account-form');
+  f.reset(); f.elements.id.value = '';
+  f.elements.password.required = true;
+  $('#account-pw-label').innerHTML = 'Password * <span style="font-weight:400;text-transform:none">(min 8 characters)</span>';
+  $('#account-form-title').textContent = 'Add an admin account';
+  $('#account-submit').textContent = 'Create Account';
+  $('#account-cancel').style.display = 'none';
+  $('#account-msg').textContent = '';
+}
+$('#account-cancel').addEventListener('click', resetAccountForm);
+
 $('#account-form').addEventListener('submit', async e => {
   e.preventDefault();
-  const msg = $('#account-msg');
+  const msg = $('#account-msg'), f = e.target.elements;
+  const id = f.id.value;
+  const body = { name: f.name.value, email: f.email.value, role: f.role.value, staff_id: f.staff_id.value || null };
+  if (f.password.value) body.password = f.password.value;
   try {
-    await authed('/api/admin/accounts', {
-      method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
-    msg.style.color = 'var(--ok)'; msg.textContent = 'Account created ✓';
-    e.target.reset();
+    if (id) {
+      await authed(`/api/admin/accounts/${id}`, { method: 'PATCH', body });
+    } else {
+      if (!f.password.value) throw new Error('A password is required for a new account.');
+      await authed('/api/admin/accounts', { method: 'POST', body });
+    }
+    msg.style.color = 'var(--ok)'; msg.textContent = id ? 'Saved ✓' : 'Account created ✓';
+    resetAccountForm();
     loadAccounts();
     setTimeout(() => msg.textContent = '', 3000);
   } catch (err) {
     msg.style.color = 'var(--red)'; msg.textContent = err.message;
   }
+});
+
+// ---------- forced password change after an admin reset ----------
+function openForcePw() {
+  $('#force-pw-back').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+$('#force-pw-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target.elements, msg = $('#force-pw-msg');
+  if (f.new_password.value !== f.confirm_password.value) {
+    msg.className = 'form-msg err'; msg.textContent = 'The passwords do not match.'; return;
+  }
+  try {
+    await authed('/api/admin/me/password', { method: 'POST', body: { new_password: f.new_password.value } });
+    if (me) me.must_change_password = false;
+    $('#force-pw-back').classList.remove('open');
+    document.body.style.overflow = '';
+    e.target.reset();
+  } catch (err) { msg.className = 'form-msg err'; msg.textContent = err.message; }
 });
 
 // ---------- my profile ----------
@@ -1915,6 +2012,7 @@ async function enterDash() {
   $$('.tabs button').forEach(b => b.style.display = visible.includes(b.dataset.tab) ? '' : 'none');
   $$('.staff-only').forEach(el => el.style.display = me.role === 'instructor' ? 'none' : '');
   $$('.super-only').forEach(el => el.style.display = me.role === 'superadmin' ? '' : 'none');
+  if (me.must_change_password) openForcePw();   // admin reset their password — force a change
   switchTab(me.role === 'instructor' ? 'inbox' : 'regs');
   try {
     const res = await authed('/api/admin/notifications?unacked=1');
