@@ -34,13 +34,20 @@ $('#logout').addEventListener('click', async () => {
   show('login');
 });
 
-$('#forgot-link').addEventListener('click', async e => {
+function showForgot(on) {
+  $('#login-form').style.display = on ? 'none' : '';
+  $('#forgot-link-row').style.display = on ? 'none' : '';
+  $('#forgot-form').style.display = on ? '' : 'none';
+  $('#login-msg').className = 'form-msg'; $('#login-msg').textContent = '';
+}
+$('#forgot-link').addEventListener('click', e => { e.preventDefault(); showForgot(true); });
+$('#forgot-cancel').addEventListener('click', () => showForgot(false));
+$('#forgot-form').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('#login-msg');
-  const email = prompt('Enter your account email and our team will reset your password:');
-  if (!email) return;
   try {
-    const res = await api('/api/password-reset-requests', { method: 'POST', body: { email } });
+    const res = await api('/api/password-reset-requests', { method: 'POST', body: { email: e.target.elements.email.value } });
+    showForgot(false);
     msg.className = 'form-msg ok'; msg.textContent = res.message;
   } catch (err) { msg.className = 'form-msg err'; msg.textContent = err.message; }
 });
@@ -225,7 +232,7 @@ async function openSessionDetail(id) {
   }));
   $$('#sd-roster [data-att]').forEach(sel => sel.addEventListener('change', async () => {
     try { await authed(`/api/admin/enrollment-sessions/${sel.dataset.att}`, { method: 'PATCH', body: { status: sel.value } }); }
-    catch (err) { alert(err.message); }
+    catch (err) { uiAlert(err.message); }
   }));
 
   renderSessionMedia(media);
@@ -294,7 +301,7 @@ function renderSessionMedia(media) {
     : '<p style="color:var(--ink-soft)">No files yet — upload class photos or documents above.</p>';
 
   $$('#sd-media [data-mdel]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this file?')) return;
+    if (!await uiConfirm('Delete this file?')) return;
     await authed(`/api/admin/media/${b.dataset.mdel}`, { method: 'DELETE' });
     renderSessionMedia(await authed(`/api/admin/sessions/${detailSessionId}/media`));
   }));
@@ -483,23 +490,25 @@ $$('[data-addform]').forEach(b => b.addEventListener('click', () => {
 // delete with force fallback: on a guarded 409 the user may force,
 // which requires re-entering their own password
 async function deleteWithForce(url, confirmMsg) {
-  if (!confirm(confirmMsg)) return false;
+  if (!await uiConfirm(confirmMsg)) return false;
   try {
     await authed(url, { method: 'DELETE' });
     return true;
   } catch (err) {
     if (err.status !== 409 || err.data?.code !== 'force_available') {
-      alert(err.message);
+      uiAlert(err.message);
       return false;
     }
-    if (!confirm(`${err.message}\n\n⚠ FORCE DELETE?\n${err.data.force_hint || ''}\nThis cannot be undone.`)) return false;
-    const password = prompt('To confirm the force delete, enter YOUR portal password:');
+    const password = await uiPrompt({
+      title: 'Force delete', type: 'password', okText: 'Force Delete',
+      message: `${err.message}\n\n${err.data.force_hint || ''} This cannot be undone.`,
+      label: 'Re-enter YOUR portal password to confirm' });
     if (!password) return false;
     try {
       await authed(url, { method: 'DELETE', body: { force: true, password } });
       return true;
     } catch (err2) {
-      alert(err2.message);
+      uiAlert(err2.message);
       return false;
     }
   }
@@ -567,7 +576,7 @@ async function renderResetRequests() {
         ev.target.textContent = 'Copied ✓';
       });
       updateBadgesFromServer();
-    } catch (err) { b.disabled = false; alert(err.message); }
+    } catch (err) { b.disabled = false; uiAlert(err.message); }
   }));
 }
 
@@ -674,19 +683,24 @@ async function loadAccounts() {
   }));
 
   $$('#account-rows [data-acct-pw]').forEach(b => b.addEventListener('click', async () => {
-    const pw = prompt('Temporary password (min 8 characters). The user must choose their own on next sign-in:');
-    if (!pw) return;
+    if (!await uiConfirm('Reset this account to a new temporary password? They\'ll be signed out and must set their own on next sign-in.', { okText: 'Reset' })) return;
     try {
-      await authed(`/api/admin/accounts/${b.dataset.acctPw}`, { method: 'PATCH', body: { password: pw } });
-      alert('Password reset. They\'ve been signed out and must set a new password when they sign back in.');
-    } catch (err) { alert(err.message); }
+      const res = await authed(`/api/admin/accounts/${b.dataset.acctPw}/reset-password`, { method: 'POST' });
+      b.insertAdjacentHTML('afterend', `<span style="display:inline-flex;gap:6px;align-items:center;margin-left:6px">
+        <code style="font-size:15px;font-weight:700;background:var(--sand);padding:3px 8px;border-radius:6px;letter-spacing:1px">${esc(res.password)}</code>
+        <button class="btn btn-sm btn-ghost" data-pw-copy="${esc(res.password)}">Copy</button></span>`);
+      b.nextElementSibling.querySelector('[data-pw-copy]').addEventListener('click', ev => {
+        navigator.clipboard?.writeText(ev.target.dataset.pwCopy); ev.target.textContent = 'Copied ✓';
+      });
+      b.style.display = 'none';
+    } catch (err) { uiAlert(err.message); }
   }));
   $$('#account-rows [data-acct-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm(`Delete the admin account for ${b.dataset.name}? This cannot be undone.`)) return;
+    if (!await uiConfirm(`Delete the admin account for ${b.dataset.name}? This cannot be undone.`)) return;
     try {
       await authed(`/api/admin/accounts/${b.dataset.acctDel}`, { method: 'DELETE' });
       loadAccounts();
-    } catch (err) { alert(err.message); }
+    } catch (err) { uiAlert(err.message); }
   }));
 }
 
@@ -861,7 +875,7 @@ async function loadPhotos() {
     loadPhotos();
   }));
   $$('#photo-rows [data-photo-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm(`Delete "${b.dataset.title}"? The image file will be removed too.`)) return;
+    if (!await uiConfirm(`Delete "${b.dataset.title}"? The image file will be removed too.`)) return;
     await authed(`/api/admin/photos/${b.dataset.photoDel}`, { method: 'DELETE' });
     loadPhotos();
   }));
@@ -959,11 +973,11 @@ async function loadSites() {
   wireExpand('#site-rows');
 
   $$('#site-rows [data-site-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm(`Delete the site "${b.dataset.name}"? This cannot be undone.`)) return;
+    if (!await uiConfirm(`Delete the site "${b.dataset.name}"? This cannot be undone.`)) return;
     try {
       await authed(`/api/admin/sites/${b.dataset.siteDel}`, { method: 'DELETE' });
       loadSites();
-    } catch (err) { alert(err.message); }
+    } catch (err) { uiAlert(err.message); }
   }));
 
   $$('#site-rows [data-site-edit]').forEach(b => b.addEventListener('click', () => {
@@ -1033,9 +1047,9 @@ const SITE_JSON_SAMPLE = [
   },
 ];
 
-function insertSample(textareaSel, sample, msgSel) {
+async function insertSample(textareaSel, sample, msgSel) {
   const ta = $(textareaSel);
-  if (ta.value.trim() && !confirm('Replace the current contents of the box with the sample?')) return;
+  if (ta.value.trim() && !await uiConfirm('Replace the current contents of the box with the sample?')) return;
   ta.value = JSON.stringify(sample, null, 2);
   ta.focus();
   const msg = $(msgSel);
@@ -1357,11 +1371,11 @@ async function loadTrips() {
     loadTrips();
   }));
   $$('#trip-rows [data-trip-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm(`Delete the trip "${b.dataset.name}"? This cannot be undone.`)) return;
+    if (!await uiConfirm(`Delete the trip "${b.dataset.name}"? This cannot be undone.`)) return;
     try {
       await authed(`/api/admin/trips/${b.dataset.tripDel}`, { method: 'DELETE' });
       loadTrips();
-    } catch (err) { alert(err.message); }
+    } catch (err) { uiAlert(err.message); }
   }));
 }
 
@@ -1468,7 +1482,7 @@ async function openCustomerDetail(id) {
   detailCustomerId = id;
   let d;
   try { d = await authed(`/api/admin/customers/${id}`); }
-  catch (err) { alert(err.message); return; }
+  catch (err) { uiAlert(err.message); return; }
   curDetail = d;
   $('#cust-detail').style.display = '';
   $('#cd-delete').style.display = me?.role === 'admin' ? '' : 'none';
@@ -1478,6 +1492,13 @@ async function openCustomerDetail(id) {
   $('#cd-contact').innerHTML = `${esc(d.customer.email)} · ${esc(d.customer.phone) || 'no phone'} ·
     ${d.customer.has_account ? 'has portal account' : 'no portal account'} ·
     customer since ${fmtDate(d.customer.created_at.slice(0,10), { month: 'long', year: 'numeric' })}`;
+  // profile edit form (collapsed) + reset-password reveal reset on each open
+  const ef = $('#cd-edit-form').elements;
+  ef.first_name.value = d.customer.first_name; ef.last_name.value = d.customer.last_name;
+  ef.email.value = d.customer.email; ef.phone.value = d.customer.phone || '';
+  $('#cd-edit-form').style.display = 'none';
+  $('#cd-reset-reveal').innerHTML = '';
+  $('#cd-reset-pw').textContent = d.customer.has_account ? 'Reset Password' : 'Set Portal Password';
 
   $('#cd-docs').innerHTML = d.documents.length ? d.documents.map(doc => {
     const src = `/api/documents/${doc.id}/file?t=${encodeURIComponent(token)}`;
@@ -1495,7 +1516,7 @@ async function openCustomerDetail(id) {
   }).join('')
     : '<p style="color:var(--ink-soft)">No documents on file.</p>';
   $$('#cd-docs [data-doc-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this document?')) return;
+    if (!await uiConfirm('Delete this document?')) return;
     await authed(`/api/admin/documents/${b.dataset.docDel}`, { method: 'DELETE' });
     openCustomerDetail(detailCustomerId);
   }));
@@ -1538,13 +1559,52 @@ function renderCustomerNotes(notes) {
     : '<p style="color:var(--ink-soft)">No notes or certifications on file.</p>';
 
   $$('#cd-notes [data-ndel]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this entry?')) return;
+    if (!await uiConfirm('Delete this entry?')) return;
     await authed(`/api/admin/notes/${b.dataset.ndel}`, { method: 'DELETE' });
     openCustomerDetail(detailCustomerId);
   }));
 }
 
 $('#cd-close').addEventListener('click', () => $('#cust-detail').style.display = 'none');
+
+// customer profile edit
+$('#cd-edit-toggle').addEventListener('click', () => {
+  const f = $('#cd-edit-form');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+});
+$('#cd-edit-cancel').addEventListener('click', () => { $('#cd-edit-form').style.display = 'none'; });
+$('#cd-edit-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target.elements, msg = $('#cd-edit-msg');
+  try {
+    const c = await authed(`/api/admin/customers/${detailCustomerId}`, { method: 'PATCH', body: {
+      first_name: f.first_name.value, last_name: f.last_name.value,
+      email: f.email.value, phone: f.phone.value } });
+    if (curDetail) Object.assign(curDetail.customer, c);
+    $('#cd-title').textContent = `${c.first_name} ${c.last_name}`;
+    $('#cd-contact').innerHTML = `${esc(c.email)} · ${esc(c.phone) || 'no phone'} ·
+      ${curDetail?.customer.has_account ? 'has portal account' : 'no portal account'}`;
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Saved ✓';
+    setTimeout(() => { msg.textContent = ''; $('#cd-edit-form').style.display = 'none'; }, 1200);
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
+
+// customer password reset — reveal a temporary password to copy
+$('#cd-reset-pw').addEventListener('click', async () => {
+  if (!await uiConfirm('Reset this customer\'s portal password to a new temporary one? They\'ll be signed out and must set their own on next sign-in.')) return;
+  try {
+    const res = await authed(`/api/admin/customers/${detailCustomerId}/reset-password`, { method: 'POST' });
+    $('#cd-reset-reveal').innerHTML = `<div style="margin-top:10px;padding:10px 14px;background:var(--sand);border-radius:8px;display:inline-flex;gap:10px;align-items:center">
+      <span style="font-size:13px;color:var(--ink-soft)">New temporary password:</span>
+      <code style="font-size:16px;font-weight:700;letter-spacing:1px">${esc(res.password)}</code>
+      <button class="btn btn-sm btn-ghost" id="cd-reset-copy" data-pw="${esc(res.password)}">Copy</button></div>`;
+    $('#cd-reset-copy').addEventListener('click', ev => {
+      navigator.clipboard?.writeText(ev.target.dataset.pw); ev.target.textContent = 'Copied ✓';
+    });
+    if (curDetail) curDetail.customer.has_account = true;
+    $('#cd-reset-pw').textContent = 'Reset Password';
+  } catch (err) { uiAlert(err.message); }
+});
 
 const todayISO = () => {
   const d = new Date();   // local date, not UTC — avoids an evening off-by-one
@@ -1628,7 +1688,7 @@ function renderRegSessions(data) {
     : '<option value="">— no more sessions available —</option>';
   $$('#cds-scheduled [data-att]').forEach(sel => sel.addEventListener('change', async () => {
     try { await authed(`/api/admin/enrollment-sessions/${sel.dataset.att}`, { method: 'PATCH', body: { status: sel.value } }); await afterSessionChange(); }
-    catch (err) { alert(err.message); }
+    catch (err) { uiAlert(err.message); }
   }));
   $$('#cds-scheduled [data-attdel]').forEach(b => b.addEventListener('click', async () => {
     await authed(`/api/admin/enrollment-sessions/${b.dataset.attdel}`, { method: 'DELETE' });
@@ -1685,7 +1745,7 @@ async function onChecklistToggle(e) {
     if (r) { r[field] = cb.checked; refreshValidationCells(); }
   } catch (err) {
     cb.checked = !cb.checked;   // revert on failure
-    alert(err.message);
+    uiAlert(err.message);
   } finally {
     cb.disabled = false;
   }
@@ -1721,12 +1781,12 @@ $('#med-form').addEventListener('submit', async e => {
 
 $('#cd-delete').addEventListener('click', async () => {
   const name = $('#cd-title').textContent;
-  if (!confirm(`Delete ${name} entirely? Their notes, documents, avatar, and portal access are removed; past registrations are kept but unlinked. This cannot be undone.`)) return;
+  if (!await uiConfirm(`Delete ${name} entirely? Their notes, documents, avatar, and portal access are removed; past registrations are kept but unlinked. This cannot be undone.`)) return;
   try {
     await authed(`/api/admin/customers/${detailCustomerId}`, { method: 'DELETE' });
     $('#cust-detail').style.display = 'none';
     loadCustomers();
-  } catch (err) { alert(err.message); }
+  } catch (err) { uiAlert(err.message); }
 });
 
 $('#cd-share').addEventListener('change', async e => {
@@ -1862,7 +1922,7 @@ async function loadHomeStats() {
     } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
   }));
   $$('#homestat-rows [data-hs-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this stat card?')) return;
+    if (!await uiConfirm('Delete this stat card?')) return;
     await authed(`/api/admin/home-stats/${b.dataset.hsDel}`, { method: 'DELETE' });
     loadHomeStats();
   }));
@@ -1900,7 +1960,7 @@ async function loadSessionTypes() {
     } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
   }));
   $$('#stype-rows [data-st-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this session type?')) return;
+    if (!await uiConfirm('Delete this session type?')) return;
     try { await authed(`/api/admin/session-types/${b.dataset.stDel}`, { method: 'DELETE' }); loadSessionTypes(); }
     catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
   }));
@@ -1940,7 +2000,7 @@ async function renderBundlesForCourse() {
       <button class="btn btn-sm btn-ghost" data-bdel="${b.id}">Delete</button>
     </div></div>`).join('') : '<p style="color:var(--ink-soft)">No bundles for this course yet.</p>';
   $$('#bundle-list [data-bdel]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this bundle?')) return;
+    if (!await uiConfirm('Delete this bundle?')) return;
     await authed(`/api/admin/bundles/${b.dataset.bdel}`, { method: 'DELETE' });
     renderBundlesForCourse();
   }));

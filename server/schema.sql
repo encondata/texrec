@@ -134,6 +134,7 @@ CREATE TABLE customers (
   medical_date    DATE,                    -- medical questionnaire verified on file (valid 1 yr); NULL = not on file
   medical_waiver_required BOOLEAN NOT NULL DEFAULT FALSE, -- answered YES → physician waiver needed
   waiver_date     DATE,                    -- physician medical waiver received on file (valid 1 yr)
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE, -- set on admin reset; cleared when they pick a new one
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

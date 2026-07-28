@@ -116,7 +116,7 @@ async function requireCustomer(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   const { rows } = await pool.query(
     `SELECT c.id, c.email, c.first_name, c.last_name, c.phone,
-            c.medical_date, c.medical_waiver_required, c.waiver_date
+            c.medical_date, c.medical_waiver_required, c.waiver_date, c.must_change_password
      FROM customer_tokens t
      JOIN customers c ON c.id = t.customer_id
      WHERE t.token = $1 AND t.expires_at > now()`, [token]);
@@ -959,6 +959,23 @@ app.delete('/api/admin/accounts/:id', requireAdmin, allow('admin'), wrap(async (
   res.json({ ok: true });
 }));
 
+// reset a staff account to a random temporary password (shown on screen); forces a change on next login
+app.post('/api/admin/accounts/:id/reset-password', requireAdmin, allow('admin'), wrap(async (req, res) => {
+  const { rows: [target] } = await pool.query('SELECT name, email, role FROM admin_users WHERE id=$1', [req.params.id]);
+  if (!target) return res.status(404).json({ error: 'Account not found.' });
+  if (target.role === 'superadmin' && req.admin.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Only a super admin can reset a super admin account.' });
+  }
+  const pw = randomPassword(8);
+  const self = +req.params.id === req.admin.id;
+  await pool.query('UPDATE admin_users SET password_hash=$1, must_change_password=$2 WHERE id=$3',
+    [hashPassword(pw), !self, req.params.id]);
+  // kick every session (except the admin's own, if resetting themselves)
+  if (self) await pool.query('DELETE FROM admin_tokens WHERE admin_id=$1 AND token<>$2', [req.params.id, req.headers.authorization.slice(7)]);
+  else await pool.query('DELETE FROM admin_tokens WHERE admin_id=$1', [req.params.id]);
+  res.json({ password: pw, name: target.name, email: target.email });
+}));
+
 // open "forgot password" requests (staff can see/handle them)
 app.get('/api/admin/password-resets', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
   const { rows } = await pool.query(
@@ -987,7 +1004,7 @@ app.post('/api/admin/password-resets/:id/reset', requireAdmin, allow('admin', 's
   } else {
     const { rows: [cust] } = await pool.query('SELECT 1 FROM customers WHERE id=$1', [pr.account_id]);
     if (!cust) return res.status(404).json({ error: 'That customer no longer exists.' });
-    await pool.query('UPDATE customers SET password_hash=$1 WHERE id=$2', [hashPassword(pw), pr.account_id]);
+    await pool.query('UPDATE customers SET password_hash=$1, must_change_password=TRUE WHERE id=$2', [hashPassword(pw), pr.account_id]);
     await pool.query('DELETE FROM customer_tokens WHERE customer_id=$1', [pr.account_id]);
   }
   await pool.query("UPDATE password_resets SET status='done', resolved_by=$1, resolved_at=now() WHERE id=$2",
@@ -1409,19 +1426,45 @@ app.get('/api/admin/customers/:id', requireAdmin, wrap(async (req, res) => {
   res.json({ customer, enrollments, notes, documents });
 }));
 
-// staff may toggle a customer's contact-sharing preference on their behalf
+// staff edit a customer's profile (name / email / phone) or contact-sharing preference
 app.patch('/api/admin/customers/:id', requireAdmin, wrap(async (req, res) => {
   if (!await canTouchCustomer(req.admin, req.params.id)) {
     return res.status(403).json({ error: 'This customer is not in any of your classes.' });
   }
-  if (typeof req.body?.share_contact !== 'boolean') {
-    return res.status(400).json({ error: 'share_contact (true/false) is required.' });
+  const b = req.body || {};
+  const sets = [], vals = [];
+  if (typeof b.share_contact === 'boolean') { vals.push(b.share_contact); sets.push(`share_contact=$${vals.length}`); }
+  if (b.first_name?.trim()) { vals.push(b.first_name.trim()); sets.push(`first_name=$${vals.length}`); }
+  if (b.last_name?.trim()) { vals.push(b.last_name.trim()); sets.push(`last_name=$${vals.length}`); }
+  if (b.phone !== undefined) { vals.push(b.phone?.trim() || null); sets.push(`phone=$${vals.length}`); }
+  if (b.email?.trim()) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email.trim())) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    const { rows: [dupe] } = await pool.query('SELECT 1 FROM customers WHERE lower(email)=lower($1) AND id<>$2', [b.email.trim(), req.params.id]);
+    if (dupe) return res.status(409).json({ error: 'That email is already in use.' });
+    vals.push(b.email.trim().toLowerCase()); sets.push(`email=$${vals.length}`);
   }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
+  vals.push(req.params.id);
   const { rows: [c] } = await pool.query(
-    'UPDATE customers SET share_contact=$1 WHERE id=$2 RETURNING id, share_contact',
-    [req.body.share_contact, req.params.id]);
+    `UPDATE customers SET ${sets.join(',')} WHERE id=$${vals.length}
+     RETURNING id, first_name, last_name, email, phone, share_contact`, vals);
   if (!c) return res.status(404).json({ error: 'Customer not found.' });
   res.json(c);
+}));
+
+// staff reset a customer's portal password to a random temporary one (shown on screen);
+// also grants portal access if they didn't have a password yet. Forces a change on next login.
+app.post('/api/admin/customers/:id/reset-password', requireAdmin, allow('admin', 'staff'), wrap(async (req, res) => {
+  if (!await canTouchCustomer(req.admin, req.params.id)) {
+    return res.status(403).json({ error: 'This customer is not in any of your classes.' });
+  }
+  const { rows: [c] } = await pool.query('SELECT first_name, last_name, email FROM customers WHERE id=$1', [req.params.id]);
+  if (!c) return res.status(404).json({ error: 'Customer not found.' });
+  const pw = randomPassword(8);
+  await pool.query('UPDATE customers SET password_hash=$1, must_change_password=TRUE WHERE id=$2',
+    [hashPassword(pw), req.params.id]);
+  await pool.query('DELETE FROM customer_tokens WHERE customer_id=$1', [req.params.id]);
+  res.json({ password: pw, name: `${c.first_name} ${c.last_name}`, email: c.email });
 }));
 
 // staff verify a customer's medical / waiver standing (the on-file dates)
@@ -1711,7 +1754,8 @@ app.post('/api/customer/login', wrap(async (req, res) => {
   await pool.query(
     `INSERT INTO customer_tokens (token, customer_id, expires_at) VALUES ($1,$2, now() + make_interval(days => $3))`,
     [token, c.id, CUSTOMER_TOKEN_DAYS]);
-  res.json({ token, first_name: c.first_name, last_name: c.last_name, email: c.email });
+  res.json({ token, first_name: c.first_name, last_name: c.last_name, email: c.email,
+             must_change: c.must_change_password });
 }));
 
 app.post('/api/customer/logout', requireCustomer, wrap(async (req, res) => {
@@ -1719,15 +1763,47 @@ app.post('/api/customer/logout', requireCustomer, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// customers may update their own sharing preference
+// customers manage their own profile: name / email / phone / sharing preference
 app.patch('/api/customer/me', requireCustomer, wrap(async (req, res) => {
-  if (typeof req.body?.share_contact !== 'boolean') {
-    return res.status(400).json({ error: 'share_contact (true/false) is required.' });
+  const b = req.body || {};
+  const sets = [], vals = [];
+  if (typeof b.share_contact === 'boolean') { vals.push(b.share_contact); sets.push(`share_contact=$${vals.length}`); }
+  if (b.first_name?.trim()) { vals.push(b.first_name.trim()); sets.push(`first_name=$${vals.length}`); }
+  if (b.last_name?.trim()) { vals.push(b.last_name.trim()); sets.push(`last_name=$${vals.length}`); }
+  if (b.phone !== undefined) { vals.push(b.phone?.trim() || null); sets.push(`phone=$${vals.length}`); }
+  if (b.email?.trim()) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email.trim())) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    const { rows: [dupe] } = await pool.query('SELECT 1 FROM customers WHERE lower(email)=lower($1) AND id<>$2', [b.email.trim(), req.customer.id]);
+    if (dupe) return res.status(409).json({ error: 'That email is already in use.' });
+    vals.push(b.email.trim().toLowerCase()); sets.push(`email=$${vals.length}`);
   }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update.' });
+  vals.push(req.customer.id);
   const { rows: [c] } = await pool.query(
-    'UPDATE customers SET share_contact=$1 WHERE id=$2 RETURNING share_contact',
-    [req.body.share_contact, req.customer.id]);
+    `UPDATE customers SET ${sets.join(',')} WHERE id=$${vals.length}
+     RETURNING first_name, last_name, email, phone, share_contact`, vals);
   res.json(c);
+}));
+
+// customers change their own password (post-reset change skips the current-password check)
+app.post('/api/customer/me/password', requireCustomer, wrap(async (req, res) => {
+  const { current_password, new_password } = req.body || {};
+  if (!new_password) return res.status(400).json({ error: 'A new password is required.' });
+  if (new_password.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+  const { rows: [c] } = await pool.query(
+    'SELECT password_hash, must_change_password FROM customers WHERE id=$1', [req.customer.id]);
+  const forced = c.must_change_password;
+  if (!forced) {
+    if (!current_password) return res.status(400).json({ error: 'Current and new password are required.' });
+    if (!c.password_hash || !verifyPassword(current_password, c.password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+  }
+  await pool.query('UPDATE customers SET password_hash=$1, must_change_password=FALSE WHERE id=$2',
+    [hashPassword(new_password), req.customer.id]);
+  await pool.query('DELETE FROM customer_tokens WHERE customer_id=$1 AND token<>$2',
+    [req.customer.id, req.headers.authorization.slice(7)]);
+  res.json({ ok: true });
 }));
 
 app.get('/api/customer/me', requireCustomer, wrap(async (req, res) => {

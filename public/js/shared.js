@@ -112,6 +112,60 @@ const fmtTime = t => {
   return `${(H % 12) || 12}:${m} ${H < 12 ? 'AM' : 'PM'}`;
 };
 
+// ---------- inline styled dialogs (replace native alert/confirm/prompt) ----------
+function _uiModal(inner) {
+  let back = document.getElementById('ui-modal-back');
+  if (!back) {
+    back = document.createElement('div');
+    back.id = 'ui-modal-back';
+    back.className = 'modal-back';
+    document.body.appendChild(back);
+  }
+  back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" style="max-width:440px">
+    <div class="m-body" style="padding:24px">${inner}</div></div>`;
+  back.classList.add('open');
+  return back;
+}
+const _uiClose = () => document.getElementById('ui-modal-back')?.classList.remove('open');
+
+function uiAlert(message, { title = '' } = {}) {
+  return new Promise(res => {
+    const back = _uiModal(`${title ? `<h3 style="margin:0 0 8px">${esc(title)}</h3>` : ''}
+      <p style="margin:0 0 18px;color:var(--ink);line-height:1.5;white-space:pre-line">${esc(message)}</p>
+      <div style="text-align:right"><button class="btn btn-sm btn-red" data-ui-ok>OK</button></div>`);
+    back.querySelector('[data-ui-ok]').onclick = () => { _uiClose(); res(); };
+  });
+}
+function uiConfirm(message, { title = '', okText = 'Confirm' } = {}) {
+  return new Promise(res => {
+    const back = _uiModal(`${title ? `<h3 style="margin:0 0 8px">${esc(title)}</h3>` : ''}
+      <p style="margin:0 0 18px;color:var(--ink);line-height:1.5;white-space:pre-line">${esc(message)}</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm btn-ghost" data-ui-cancel>Cancel</button>
+        <button class="btn btn-sm btn-red" data-ui-ok>${esc(okText)}</button></div>`);
+    back.querySelector('[data-ui-cancel]').onclick = () => { _uiClose(); res(false); };
+    back.querySelector('[data-ui-ok]').onclick = () => { _uiClose(); res(true); };
+  });
+}
+// resolves to the entered string, or null if cancelled
+function uiPrompt({ title = '', message = '', label = '', type = 'text', okText = 'Submit', placeholder = '', minlength } = {}) {
+  return new Promise(res => {
+    const back = _uiModal(`${title ? `<h3 style="margin:0 0 8px">${esc(title)}</h3>` : ''}
+      ${message ? `<p style="margin:0 0 12px;color:var(--ink);line-height:1.5;white-space:pre-line">${esc(message)}</p>` : ''}
+      <form data-ui-form>
+        ${label ? `<div class="field"><label>${esc(label)}</label>` : '<div class="field">'}
+          <input name="v" type="${type}" placeholder="${esc(placeholder)}" ${minlength ? `minlength="${minlength}"` : ''}></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button type="button" class="btn btn-sm btn-ghost" data-ui-cancel>Cancel</button>
+          <button type="submit" class="btn btn-sm btn-red">${esc(okText)}</button></div>
+      </form>`);
+    const form = back.querySelector('[data-ui-form]');
+    form.querySelector('[data-ui-cancel]').onclick = () => { _uiClose(); res(null); };
+    form.onsubmit = e => { e.preventDefault(); _uiClose(); res(form.elements.v.value); };
+    setTimeout(() => form.elements.v.focus(), 40);
+  });
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, {
     ...opts,

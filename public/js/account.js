@@ -36,14 +36,71 @@ $('#login-form').addEventListener('submit', async e => {
   }
 });
 
-$('#forgot-link').addEventListener('click', async e => {
+function showForgot(on) {
+  $('#login-form').style.display = on ? 'none' : '';
+  $('#forgot-link-row').style.display = on ? 'none' : '';
+  $('#forgot-form').style.display = on ? '' : 'none';
+  $('#login-msg').className = 'form-msg'; $('#login-msg').textContent = '';
+}
+$('#forgot-link').addEventListener('click', e => { e.preventDefault(); showForgot(true); });
+$('#forgot-cancel').addEventListener('click', () => showForgot(false));
+$('#forgot-form').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('#login-msg');
-  const email = prompt('Enter your account email and our team will reset your password:');
-  if (!email) return;
   try {
-    const res = await api('/api/password-reset-requests', { method: 'POST', body: { email } });
+    const res = await api('/api/password-reset-requests', { method: 'POST', body: { email: e.target.elements.email.value } });
+    showForgot(false);
     msg.className = 'form-msg ok'; msg.textContent = res.message;
+  } catch (err) { msg.className = 'form-msg err'; msg.textContent = err.message; }
+});
+
+// ---------- account settings: profile + password ----------
+$('#cust-profile-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target.elements, msg = $('#cust-profile-msg');
+  try {
+    const c = await cauthed('/api/customer/me', { method: 'PATCH', body: {
+      first_name: f.first_name.value, last_name: f.last_name.value,
+      email: f.email.value, phone: f.phone.value } });
+    if (myCustomer) Object.assign(myCustomer, c);
+    $('#cust-hello').textContent = `Welcome, ${c.first_name}`;
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Saved ✓';
+    setTimeout(() => msg.textContent = '', 3000);
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
+
+$('#cust-password-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target.elements, msg = $('#cust-password-msg');
+  if (f.new_password.value !== f.confirm_password.value) {
+    msg.style.color = 'var(--red)'; msg.textContent = 'New passwords do not match.'; return;
+  }
+  try {
+    await cauthed('/api/customer/me/password', { method: 'POST', body: {
+      current_password: f.current_password.value, new_password: f.new_password.value } });
+    e.target.reset();
+    msg.style.color = 'var(--ok)'; msg.textContent = 'Password updated ✓';
+    setTimeout(() => msg.textContent = '', 4000);
+  } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+});
+
+// forced password change after a team reset
+function openForcePw() {
+  $('#force-pw-back').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+$('#force-pw-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target.elements, msg = $('#force-pw-msg');
+  if (f.new_password.value !== f.confirm_password.value) {
+    msg.className = 'form-msg err'; msg.textContent = 'The passwords do not match.'; return;
+  }
+  try {
+    await cauthed('/api/customer/me/password', { method: 'POST', body: { new_password: f.new_password.value } });
+    if (myCustomer) myCustomer.must_change_password = false;
+    $('#force-pw-back').classList.remove('open');
+    document.body.style.overflow = '';
+    e.target.reset();
   } catch (err) { msg.className = 'form-msg err'; msg.textContent = err.message; }
 });
 
@@ -53,13 +110,21 @@ $('#logout').addEventListener('click', async () => {
   show('login');
 });
 
+let myCustomer = null;
+
 async function enterDash() {
   let me;
   try { me = await cauthed('/api/customer/me'); }
   catch { localStorage.removeItem('texrec_customer_token'); ctoken = null; show('login'); return; }
   show('dash');
+  myCustomer = me.customer;
   $('#cust-hello').textContent = `Welcome, ${me.customer.first_name}`;
   $('#share-contact').checked = !!me.customer.share_contact;
+  // profile form
+  const pf = $('#cust-profile-form').elements;
+  pf.first_name.value = me.customer.first_name; pf.last_name.value = me.customer.last_name;
+  pf.email.value = me.customer.email; pf.phone.value = me.customer.phone || '';
+  if (me.customer.must_change_password) openForcePw();   // team reset their password
   const initials = `${me.customer.first_name[0] || ''}${me.customer.last_name[0] || ''}`.toUpperCase();
   $('#my-avatar').innerHTML = me.customer.has_avatar
     ? `<img src="/api/customers/${me.customer.id}/avatar?t=${encodeURIComponent(ctoken)}&v=${Date.now()}"
@@ -84,7 +149,7 @@ async function enterDash() {
   }).join('')
     : '<p style="color:var(--ink-soft)">Nothing uploaded yet.</p>';
   $$('#my-docs [data-mydoc-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this document?')) return;
+    if (!await uiConfirm('Delete this document?')) return;
     await cauthed(`/api/customer/documents/${b.dataset.mydocDel}`, { method: 'DELETE' });
     enterDash();
   }));
@@ -167,7 +232,7 @@ async function enterDash() {
     : '<p style="color:var(--ink-soft)">Photos and files from your sessions will show up here.</p>';
   $$('#my-media [data-mymedia-del]').forEach(b => b.addEventListener('click', async e => {
     e.stopPropagation();
-    if (!confirm('Delete this photo?')) return;
+    if (!await uiConfirm('Delete this photo?')) return;
     await cauthed(`/api/customer/media/${b.dataset.mymediaDel}`, { method: 'DELETE' });
     enterDash();
   }));
@@ -299,7 +364,7 @@ $('#my-classes').addEventListener('click', async e => {
     }
   } catch (err) {
     const msg = $(`#mysess-msg-${t.dataset.myadd || t.dataset.reg || t.dataset.mysess}`);
-    if (msg) { msg.className = 'form-msg err'; msg.textContent = err.message; } else alert(err.message);
+    if (msg) { msg.className = 'form-msg err'; msg.textContent = err.message; } else uiAlert(err.message);
   }
 });
 

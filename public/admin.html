@@ -28,8 +28,14 @@
           <input id="l-pass" name="password" type="password" required autocomplete="current-password"></div>
         <button class="btn btn-red" type="submit" style="width:100%">Sign In</button>
       </form>
-      <p style="text-align:center;margin-top:14px;font-size:14px">
+      <p style="text-align:center;margin-top:14px;font-size:14px" id="forgot-link-row">
         <a href="#" id="forgot-link" style="color:var(--ink-soft)">Forgot your password?</a></p>
+      <form id="forgot-form" style="display:none;margin-top:12px">
+        <div class="field"><label for="fg-email">Account email</label>
+          <input id="fg-email" name="email" type="email" required autocomplete="username"></div>
+        <button class="btn btn-red" type="submit" style="width:100%">Send Reset Request</button>
+        <button class="btn btn-ghost" type="button" id="forgot-cancel" style="width:100%;margin-top:8px">Back to Sign In</button>
+      </form>
     </div>
   </div>
 </div>
@@ -369,10 +375,28 @@ placeholder='[
           </div>
         </div>
         <div class="row-actions">
+          <button class="btn btn-sm btn-ghost" id="cd-edit-toggle">Edit Details</button>
+          <button class="btn btn-sm btn-ghost" id="cd-reset-pw">Reset Password</button>
           <button class="btn btn-sm btn-ghost" id="cd-delete" style="display:none">Delete Customer</button>
           <button class="btn btn-sm btn-ghost" id="cd-close">Close</button>
         </div>
       </div>
+      <span id="cd-reset-reveal"></span>
+
+      <form id="cd-edit-form" class="card" style="display:none;box-shadow:none;margin-top:14px"><div class="pad" style="padding:16px 18px">
+        <div class="field-row">
+          <div class="field"><label>First name</label><input name="first_name" required></div>
+          <div class="field"><label>Last name</label><input name="last_name" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Email</label><input name="email" type="email" required></div>
+          <div class="field"><label>Phone</label><input name="phone" type="tel"></div>
+        </div>
+        <button class="btn btn-sm btn-red" type="submit">Save Details</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="cd-edit-cancel">Cancel</button>
+        <span id="cd-edit-msg" style="margin-left:12px;font-weight:600"></span>
+      </div></form>
+
       <h4 style="margin:18px 0 10px;font-family:var(--font-body);font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--ink-soft)">Medical &amp; Forms
         <span id="cd-med-flag" style="margin-left:10px;vertical-align:middle"></span></h4>
       <form id="med-form" class="card" style="box-shadow:none;margin-bottom:6px"><div class="pad" style="padding:16px 18px">
