@@ -3,6 +3,11 @@ import { query } from './db.js';
 import { hashPassword } from './lib/crypto.js';
 import { storeImage } from './lib/storage.js';
 
+// Demo logins (SEED_DEMO=1 only):
+//   staff    jason@ / sarah@ / mike@ / emily@texrec.com      password: Staff12345!
+//   students alex@ / maria@ / chris@ / dana@ / sam@example.com  password: Student12345!
+//   admin    BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD from .env (new password required on first sign-in)
+//
 // Demo content so a fresh install looks like a real site. Only runs on an empty database
 // when SEED_DEMO=1. Images are generated gradients — replace them from the admin portal.
 
