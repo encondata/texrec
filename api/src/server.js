@@ -24,6 +24,8 @@ app.use(cookieParser());
 app.use('/api/stripe', stripeWebhookRouter);
 
 app.use(express.json({ limit: '2mb' }));
+// API JSON is never cached by the browser; file responses set their own caching
+app.use('/api', (req, res, next) => { if (!req.path.startsWith('/files/')) res.set('Cache-Control', 'no-store'); next(); });
 app.use(attachUser);
 app.use(csrfGuard);
 

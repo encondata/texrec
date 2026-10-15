@@ -168,7 +168,7 @@ export async function seedDemo() {
     ['Choosing Your First Regulator', 'equipment', 'What matters, what doesn\'t, and what we recommend for North Texas diving.',
       'Cold-water rated, environmentally sealed first stages are worth it for Texas lake diving in the winter. Come by the shop and try a few on a tank before you buy.', 3],
   ];
-  const postImages = ['diver-reef', 'turtle', 'boat', 'diver-header'];
+  const postImages = ['diver-reef', 'turtle', 'boat', 'regulator'];
   for (const [i, [title, category, excerpt, body, daysAgo]] of posts.entries()) {
     await query(
       `INSERT INTO posts (slug, title, category, excerpt, body, cover_key, author_id, published_at) VALUES ($1,$2,$3,$4,$5,$6,$7, now() - ($8::int * interval '9 days'))`,
@@ -180,6 +180,7 @@ export async function seedDemo() {
     ['Open Water Class — Lake Granbury', 'classes', 'divers-group'], ['Sea Turtle, Cozumel', 'travel', 'turtle'], ['Wreck Dive', 'dive_sites', 'wreck'],
     ['Reef Life', 'travel', 'reef-fish'], ['Cavern Light', 'dive_sites', 'cave-light'], ['Flower Gardens Trip', 'travel', 'boat'],
     ['Hawksbill', 'travel', 'turtle-2'], ['Intro to Cave', 'classes', 'cave-diver'], ['Descent', 'classes', 'diver-cave'],
+    ['Pool Session — Mask Skills', 'classes', 'pool-session'], ['The Shop', 'other', 'shop-exterior'],
   ];
   for (const [i, [title, album, img]] of gallery.entries()) {
     const key = await photo('media', img, title, i + 3);
@@ -190,5 +191,5 @@ export async function seedDemo() {
   await setContent('home.hero.image', await photo('content', 'hero-wide', 'Tex Rec', 0));
   await setContent('home.nextEvent.image', await photo('content', 'boat', 'Next event', 1));
   await setContent('home.cta.image', await photo('content', 'diver-cave', 'Dive', 2));
-  await setContent('about.image', await photo('content', 'diver-reef', 'About', 3));
+  await setContent('about.image', await photo('content', 'shop-exterior', 'About', 3));
 }
