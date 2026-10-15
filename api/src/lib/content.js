@@ -17,6 +17,7 @@ export const CONTENT_SCHEMA = [
   { section: 'Site', key: 'site.footer', label: 'Footer blurb', type: 'textarea', default: 'Scuba training in Burleson, Texas through SDI, TDI and RAID. Small classes — six students max per instructor — and private classes for every course.' },
 
   // ---- home ----
+  { section: 'Home', key: 'home.hero.eyebrow', label: 'Hero eyebrow line', type: 'text', default: 'Training · Community · Exploration' },
   { section: 'Home', key: 'home.hero.title', label: 'Hero headline (one line per row)', type: 'textarea', default: 'EXPLORE\nLEARN\nDIVE MORE' },
   { section: 'Home', key: 'home.hero.subtitle', label: 'Hero subtitle', type: 'textarea', default: 'Scuba training in Burleson, TX through SDI/TDI and RAID.' },
   { section: 'Home', key: 'home.hero.image', label: 'Hero image', type: 'image', default: '' },
@@ -33,6 +34,16 @@ export const CONTENT_SCHEMA = [
   { section: 'Home', key: 'home.featured.title', label: 'Featured classes heading', type: 'text', default: 'Featured Classes' },
   { section: 'Home', key: 'home.nextEvent.label', label: 'Next event banner label', type: 'text', default: 'Next Local Event' },
   { section: 'Home', key: 'home.nextEvent.image', label: 'Next event banner image', type: 'image', default: '' },
+  { section: 'Home', key: 'home.stats', label: 'Stats band', type: 'list',
+    itemFields: [{ key: 'value', label: 'Value', type: 'text' }, { key: 'label', label: 'Label', type: 'text' }],
+    default: [{ value: '6', label: 'Students max per instructor' }, { value: '3', label: 'Training agencies' }, { value: '1,000+', label: 'Divers certified' }, { value: '100%', label: 'Courses available privately' }] },
+  { section: 'Home', key: 'home.instructors.title', label: 'Instructors section heading', type: 'text', default: 'Learn from divers who live this' },
+  { section: 'Home', key: 'home.instructors.text', label: 'Instructors section blurb', type: 'textarea', default: 'Every Tex Rec instructor teaches small classes by choice. Real experience, real patience, and a student-first approach in every course.' },
+  { section: 'Home', key: 'home.blog.title', label: 'Blog section heading', type: 'text', default: 'News, Stories & Updates' },
+  { section: 'Home', key: 'home.cta.title', label: 'Bottom call-to-action headline', type: 'text', default: 'Ready to dive?' },
+  { section: 'Home', key: 'home.cta.text', label: 'Bottom call-to-action text', type: 'textarea', default: 'Pick a class, grab a spot on the calendar, and we’ll see you in the water. Private classes available for every course.' },
+  { section: 'Home', key: 'home.cta.button', label: 'Bottom call-to-action button', type: 'text', default: 'Book a Class' },
+  { section: 'Home', key: 'home.cta.image', label: 'Bottom call-to-action background', type: 'image', default: '' },
 
   // ---- pages ----
   { section: 'Training', key: 'training.title', label: 'Heading', type: 'text', default: 'Dive Training Classes' },

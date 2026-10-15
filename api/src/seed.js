@@ -1,7 +1,22 @@
 import sharp from 'sharp';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { query } from './db.js';
 import { hashPassword } from './lib/crypto.js';
 import { storeImage } from './lib/storage.js';
+import { setContent } from './lib/content.js';
+
+// sample photos cropped from the pitch deck (src/seed-images); any of them can be replaced from the admin
+const imagesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'seed-images');
+async function photo(prefix, name, fallbackLabel, i) {
+  try {
+    const buf = await readFile(path.join(imagesDir, `${name}.webp`));
+    return (await storeImage(prefix, buf, 'image/webp')).key;
+  } catch {
+    return placeholder(prefix, fallbackLabel, i);
+  }
+}
 
 // Demo logins (SEED_DEMO=1 only):
 //   staff    jason@ / sarah@ / mike@ / emily@texrec.com      password: Staff12345!
@@ -40,28 +55,28 @@ export async function seedDemo() {
     const { rows: [u] } = await query(
       `INSERT INTO users (email, password_hash, role, first_name, last_name, phone) VALUES ($1,$2,'staff',$3,$4,'(817) 555-01${10 + i}') RETURNING id`,
       [`${first.toLowerCase()}@texrec.com`, await hashPassword('Staff12345!'), first, last]);
-    const photo = await placeholder('staff', first, i, 800, 1000);
+    const photoKey = await photo('staff', `staff-${first.toLowerCase()}`, first, i);
     await query('INSERT INTO staff_profiles (user_id, title, bio, certifications, agencies, photo_key, sort) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [u.id, title, bio, certs, agencies, photo, i + 1]);
+      [u.id, title, bio, certs, agencies, photoKey, i + 1]);
     staffIds.push(u.id);
   }
 
   // ---- courses ----
   const courseDefs = [
-    ['Open Water Scuba Diver', 'SDI', 'recreational', 'beginner', 59900, '3–4 days', 'Everything you need to get started with real scuba skills to dive with confidence.', true],
-    ['Advanced Open Water Diver', 'SDI', 'recreational', 'intermediate', 49900, '2–4 days', 'Expand your skills and experience with advanced diving techniques.', true],
-    ['Rescue Diver', 'SDI', 'recreational', 'intermediate', 49900, '3 days', 'Learn to prevent and manage dive emergencies.', false],
-    ['Divemaster', 'SDI', 'professional', 'professional', 129900, '4–8 weeks', 'Take the next step and lead.', false],
-    ['Nitrox Diver', 'SDI', 'specialty', 'beginner', 24900, '1 day', 'Extend your bottom time and dive safer.', true],
-    ['Decompression Procedures', 'TDI', 'technical', 'technical', 79900, '4 days', 'Learn advanced decompression theory and techniques.', false],
-    ['Intro to Cave', 'TDI', 'technical', 'technical', 109900, '4–5 days', 'Begin your cave diving journey with world-class training.', false],
-    ['Intro to Tech', 'TDI', 'technical', 'intermediate', 39900, '2 days', 'Your first step into technical diving equipment and skills.', true],
-    ['RAID Open Water 20', 'RAID', 'recreational', 'beginner', 59900, '3–4 days', 'An alternative path to certification with RAID.', false],
+    ['Open Water Scuba Diver', 'SDI', 'recreational', 'beginner', 59900, '3–4 days', 'Everything you need to get started with real scuba skills to dive with confidence.', true, 'diver-blue'],
+    ['Advanced Open Water Diver', 'SDI', 'recreational', 'intermediate', 49900, '2–4 days', 'Expand your skills and experience with advanced diving techniques.', true, 'diver-reef'],
+    ['Rescue Diver', 'SDI', 'recreational', 'intermediate', 49900, '3 days', 'Learn to prevent and manage dive emergencies.', false, 'divers-group'],
+    ['Divemaster', 'SDI', 'professional', 'professional', 129900, '4–8 weeks', 'Take the next step and lead.', false, 'diver-header'],
+    ['Nitrox Diver', 'SDI', 'specialty', 'beginner', 24900, '1 day', 'Extend your bottom time and dive safer.', true, 'diver-cave'],
+    ['Decompression Procedures', 'TDI', 'technical', 'technical', 79900, '4 days', 'Learn advanced decompression theory and techniques.', false, 'wreck'],
+    ['Intro to Cave', 'TDI', 'technical', 'technical', 109900, '4–5 days', 'Begin your cave diving journey with world-class training.', false, 'cave-light'],
+    ['Intro to Tech', 'TDI', 'technical', 'intermediate', 39900, '2 days', 'Your first step into technical diving equipment and skills.', true, 'cave-diver'],
+    ['RAID Open Water 20', 'RAID', 'recreational', 'beginner', 59900, '3–4 days', 'An alternative path to certification with RAID.', false, 'turtle-2'],
   ];
   const courseIds = {};
-  for (const [i, [name, ag, category, level, price, duration, summary, featured]] of courseDefs.entries()) {
+  for (const [i, [name, ag, category, level, price, duration, summary, featured, img]] of courseDefs.entries()) {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const image = await placeholder('courses', name, i);
+    const image = await photo('courses', img, name, i);
     const { rows: [c] } = await query(
       `INSERT INTO courses (slug, name, agency_id, category, level, price_cents, duration, summary, description, prerequisites, outcomes, faq, image_key, featured, sort)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
@@ -76,16 +91,16 @@ export async function seedDemo() {
 
   // ---- dive sites ----
   const sites = [
-    ['Lake Granbury', 'Granbury, TX', 'beginner', 'Our go-to local training lake, 45 minutes from the shop.'],
-    ['Clear Springs Scuba Park', 'Terrell, TX', 'beginner', 'Spring-fed quarry with platforms, sunken boats and a bus.'],
-    ['Lake Travis', 'Austin, TX', 'intermediate', 'Deep, clear water and great for advanced and tech training.'],
-    ['Flower Garden Banks', 'Gulf of Mexico', 'advanced', 'Blue-water reef diving 100 miles off Galveston. Annual trip.'],
+    ['Lake Granbury', 'Granbury, TX', 'beginner', 'Our go-to local training lake, 45 minutes from the shop.', 'divers-group'],
+    ['Clear Springs Scuba Park', 'Terrell, TX', 'beginner', 'Spring-fed quarry with platforms, sunken boats and a bus.', 'wreck-wide'],
+    ['Lake Travis', 'Austin, TX', 'intermediate', 'Deep, clear water and great for advanced and tech training.', 'cave-light'],
+    ['Flower Garden Banks', 'Gulf of Mexico', 'advanced', 'Blue-water reef diving 100 miles off Galveston. Annual trip.', 'boat'],
   ];
   const siteIds = [];
-  for (const [i, [name, location, difficulty, description]] of sites.entries()) {
+  for (const [i, [name, location, difficulty, description, img]] of sites.entries()) {
     const { rows: [s] } = await query(
       'INSERT INTO dive_sites (slug, name, location, description, difficulty, image_key, sort) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
-      [name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, location, description, difficulty, await placeholder('sites', name, i + 2), i + 1]);
+      [name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, location, description, difficulty, await photo('sites', img, name, i + 2), i + 1]);
     siteIds.push(s.id);
   }
 
@@ -153,16 +168,27 @@ export async function seedDemo() {
     ['Choosing Your First Regulator', 'equipment', 'What matters, what doesn\'t, and what we recommend for North Texas diving.',
       'Cold-water rated, environmentally sealed first stages are worth it for Texas lake diving in the winter. Come by the shop and try a few on a tank before you buy.', 3],
   ];
+  const postImages = ['diver-reef', 'turtle', 'boat', 'diver-header'];
   for (const [i, [title, category, excerpt, body, daysAgo]] of posts.entries()) {
     await query(
       `INSERT INTO posts (slug, title, category, excerpt, body, cover_key, author_id, published_at) VALUES ($1,$2,$3,$4,$5,$6,$7, now() - ($8::int * interval '9 days'))`,
-      [title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), title, category, excerpt, body, await placeholder('posts', title, i + 1), staffIds[i % 2], daysAgo]);
+      [title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), title, category, excerpt, body, await photo('posts', postImages[i], title, i + 1), staffIds[i % 2], daysAgo]);
   }
 
   // ---- gallery ----
-  const gallery = [['Open Water Class — Lake Granbury', 'classes'], ['Sea Turtle, Cozumel', 'travel'], ['Wreck Dive', 'dive_sites'], ['Pool Session', 'classes'], ['Reef Life', 'travel'], ['Night Dive', 'dive_sites']];
-  for (const [i, [title, album]] of gallery.entries()) {
-    const key = await placeholder('media', title, i + 3, 1600, 1200);
-    await query(`INSERT INTO media (key, mime, width, height, title, album, sort) VALUES ($1,'image/webp',1600,1200,$2,$3,$4)`, [key, title, album, i]);
+  const gallery = [
+    ['Open Water Class — Lake Granbury', 'classes', 'divers-group'], ['Sea Turtle, Cozumel', 'travel', 'turtle'], ['Wreck Dive', 'dive_sites', 'wreck'],
+    ['Reef Life', 'travel', 'reef-fish'], ['Cavern Light', 'dive_sites', 'cave-light'], ['Flower Gardens Trip', 'travel', 'boat'],
+    ['Hawksbill', 'travel', 'turtle-2'], ['Intro to Cave', 'classes', 'cave-diver'], ['Descent', 'classes', 'diver-cave'],
+  ];
+  for (const [i, [title, album, img]] of gallery.entries()) {
+    const key = await photo('media', img, title, i + 3);
+    await query(`INSERT INTO media (key, mime, title, album, sort) VALUES ($1,'image/webp',$2,$3,$4)`, [key, title, album, i]);
   }
+
+  // ---- site imagery (editable under Admin → Site Content) ----
+  await setContent('home.hero.image', await photo('content', 'hero-wide', 'Tex Rec', 0));
+  await setContent('home.nextEvent.image', await photo('content', 'boat', 'Next event', 1));
+  await setContent('home.cta.image', await photo('content', 'diver-cave', 'Dive', 2));
+  await setContent('about.image', await photo('content', 'diver-reef', 'About', 3));
 }
