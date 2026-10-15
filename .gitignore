@@ -11,10 +11,6 @@ node_modules/
 .vscode/
 .idea/
 
-# runtime user content — uploads, private class media, customer docs & avatars
-media/
-public/uploads/
-
 # machine-local source assets (third-party originals kept outside the repo)
 DAN-Membership-Referral-Rewards-*.jpg
 
@@ -23,5 +19,8 @@ DAN-Membership-Referral-Rewards-*.jpg
 *.log
 npm-debug.log*
 
-# raw logo source (processed version lives in public/img/)
+# raw logo source (processed version lives in web/public/img/)
 texreclogo.jpg
+
+# build output
+web/dist/

@@ -1,48 +1,89 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${PGDATABASE:-texrec}
       POSTGRES_USER: ${PGUSER:-texrec}
-      POSTGRES_PASSWORD: ${PGPASSWORD:-texrec}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?set PGPASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-texrec} -d ${PGDATABASE:-texrec}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  app:
-    build: .
+  minio:
+    build: ./minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-texrec}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - miniodata:/data
+    ports:
+      # admin console, localhost-only by default (reach it over an SSH tunnel)
+      - "${MINIO_CONSOLE_BIND:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # dev mail catcher: every outgoing email lands in its web UI instead of a real inbox.
+  # Switch to a real provider in Admin → Settings → Email.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - "${MAILPIT_BIND:-127.0.0.1}:${MAILPIT_PORT:-8025}:8025"
+
+  api:
+    build: ./api
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
+      NODE_ENV: production
+      TZ: America/Chicago
+      PORT: 3000
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET in .env}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
       PGHOST: db
       PGPORT: 5432
       PGDATABASE: ${PGDATABASE:-texrec}
       PGUSER: ${PGUSER:-texrec}
-      PGPASSWORD: ${PGPASSWORD:-texrec}
-      PORT: 3000
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      ADMIN_TOKEN_HOURS: ${ADMIN_TOKEN_HOURS:-12}
-      CUSTOMER_TOKEN_DAYS: ${CUSTOMER_TOKEN_DAYS:-7}
-      # first-boot admin account (change the password after first login!)
+      PGPASSWORD: ${PGPASSWORD}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-texrec}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-texrec}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@texrec.com}
-      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-change-me-now}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-TexRec Admin}
+      SEED_DEMO: ${SEED_DEMO:-0}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    depends_on:
+      - api
     ports:
-      # BIND_IP defaults to all interfaces; set it to a dedicated host IP
-      # (e.g. 10.10.48.7) to serve the app only on that address.
-      - "${BIND_IP:-0.0.0.0}:${HOST_PORT:-80}:3000"
-    volumes:
-      - media:/app/media
-      - uploads:/app/public/uploads
+      - "${BIND_IP:-0.0.0.0}:${HOST_PORT:-80}:80"
 
 volumes:
   pgdata:
-  media:
-  uploads:
+  miniodata:
